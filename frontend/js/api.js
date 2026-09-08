@@ -127,6 +127,7 @@ const API = (() => {
       const q = new URLSearchParams(params).toString();
       return request('GET', '/finances/adherents-payes' + (q ? '?' + q : ''));
     },
+    createFinanceAdherent: (data) => request('POST', '/finances/adherents-rapides', data),
 
     // Renvoie un blob URL authentifié pour un fichier protégé
     fileUrl: async (relPath) => {

@@ -7,40 +7,41 @@ const router = express.Router();
 
 export const COMPTES = [
   { code: 'BDL', label: 'BDL — Banque de Développement Local' },
-  { code: 'CPA', label: 'CPA — Crédit Populaire d’Algérie' },
+  { code: 'CPA', label: "CPA — Crédit Populaire d'Algérie" },
   { code: 'CAISSE', label: 'Caisse (espèces)' },
 ];
 
 const COMPTE_CODES = COMPTES.map((c) => c.code);
 const SENS = ['entree', 'sortie'];
 const NATURES_ENTREE = ['cheque', 'espece', 'virement', 'autre'];
-const NATURES_SORTIE = ['paiement_employe', 'loyer', 'charges', 'fournitures', 'deplacement', 'autre'];
+const NATURES_SORTIE = ['paiement_employe', 'loyer', 'charges', 'fournitures', 'deplacement', 'commission_tva', 'commission', 'tva', 'ebanking', 'autre'];
 const MOTIFS_SORTIE = [
   { code: 'paiement_employe', label: 'Paiement employé' },
   { code: 'loyer', label: 'Loyer' },
   { code: 'charges', label: 'Charges' },
   { code: 'fournitures', label: 'Fournitures' },
   { code: 'deplacement', label: 'Déplacement' },
+  { code: 'commission_tva', label: 'Commissions et TVA' },
+  { code: 'commission', label: 'Commission' },
+  { code: 'tva', label: 'TVA' },
+  { code: 'ebanking', label: 'ebanking' },
   { code: 'autre', label: 'Autre' },
 ];
+const EBANKING_MONTANT = 2000;
 
 function num(v) {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 }
-
 function round2(v) {
   return Math.round(num(v) * 100) / 100;
 }
-
 function today() {
   return new Date().toISOString().slice(0, 10);
 }
-
 function labelCompte(code) {
   return COMPTES.find((c) => c.code === code)?.label || code;
 }
-
 function labelNature(sens, nature) {
   if (sens === 'sortie') return MOTIFS_SORTIE.find((m) => m.code === nature)?.label || nature;
   const map = { cheque: 'Chèque', espece: 'Espèce', virement: 'Virement', autre: 'Autre entrée' };
@@ -134,7 +135,7 @@ function parseMouvementBody(body = {}, { partial = false } = {}) {
   const out = {};
 
   if (!partial || body.compte_code !== undefined) {
-    const code = String(body.compte_code || '').toUpperCase();
+    const code = String(body.compte_code || '').toUpperCase().trim();
     if (!COMPTE_CODES.includes(code)) errors.push('Compte invalide (BDL, CPA ou Caisse).');
     else out.compte_code = code;
   }
@@ -311,15 +312,21 @@ router.get('/adherents-payes', authenticate, authorize('admin', 'president'), as
     const mode = String(req.query.mode || '').toLowerCase();
     const q = String(req.query.q || '').trim();
     const params = [];
-    let where = `WHERE a.paiement_mode IN ('cheque','espece','virement')`;
+    let where;
+    if (q) {
+      where = 'WHERE (a.nom LIKE ? OR a.prenom LIKE ? OR a.matricule LIKE ? OR a.paiement_ref LIKE ?)';
+      const like = `%${q}%`;
+      params.push(like, like, like, like);
+    } else {
+      where = `WHERE (
+        a.paiement_mode IN ('cheque','espece','virement')
+        OR a.description = 'Ajout rapide finances'
+        OR EXISTS (SELECT 1 FROM finance_mouvements fm WHERE fm.adherent_id = a.id AND fm.sens = 'entree')
+      )`;
+    }
     if (['cheque', 'espece', 'virement'].includes(mode)) {
       where += ' AND a.paiement_mode = ?';
       params.push(mode);
-    }
-    if (q) {
-      where += ' AND (a.nom LIKE ? OR a.prenom LIKE ? OR a.matricule LIKE ? OR a.paiement_ref LIKE ?)';
-      const like = `%${q}%`;
-      params.push(like, like, like, like);
     }
     const rows = await query(`
       SELECT a.id, a.matricule, a.nom, a.prenom, a.telephone, a.paiement_mode, a.paiement_ref, a.paiement_banque, a.date_adhesion,
@@ -334,6 +341,40 @@ router.get('/adherents-payes', authenticate, authorize('admin', 'president'), as
       n_encaissements: num(r.n_encaissements),
       total_encaisse: round2(r.total_encaisse),
     })));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.post('/adherents-rapides', authenticate, authorize('admin', 'president'), async (req, res) => {
+  try {
+    await ensureFinanceSchema();
+    const nom = String(req.body.nom || '').trim();
+    const prenom = String(req.body.prenom || '').trim();
+    const matricule = String(req.body.matricule || '').trim().slice(0, 40);
+    if (!nom) return res.status(400).json({ error: 'Le nom est obligatoire.' });
+    if (!prenom) return res.status(400).json({ error: 'Le prénom est obligatoire.' });
+    if (!matricule) return res.status(400).json({ error: 'Le matricule est obligatoire.' });
+    const exists = await get('SELECT id, nom, prenom FROM adherents WHERE matricule = ?', [matricule]);
+    if (exists) {
+      return res.status(409).json({ error: `Ce matricule existe déjà (${exists.nom} ${exists.prenom}).` });
+    }
+    const year = new Date().getFullYear();
+    const dateAdh = today();
+    const result = await run(
+      `INSERT INTO adherents
+        (matricule, nom, prenom, wilaya_code, type_code, niveau, num_ordre, annee, date_adhesion, description)
+       VALUES (?,?,?,?,?,?,?,?,?,?)`,
+      [matricule, nom, prenom, '16', 'AD', 'Adhérent Simple', 0, year, dateAdh, 'Ajout rapide finances']
+    );
+    const id = result?.insertId || result?.id;
+    const created = await get(
+      `SELECT a.id, a.matricule, a.nom, a.prenom, a.telephone, a.paiement_mode, a.paiement_ref, a.paiement_banque, a.date_adhesion
+       FROM adherents a WHERE a.id = ?`,
+      [id]
+    );
+    await logAction(req, 'CREATE_ADHERENT', `Ajout rapide finances : ${nom} ${prenom} (Matricule: ${matricule})`, id, 'adherent');
+    res.status(201).json(created);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

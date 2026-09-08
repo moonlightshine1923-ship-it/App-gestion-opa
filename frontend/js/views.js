@@ -153,7 +153,7 @@ const Views = (() => {
             <div style="display:flex;align-items:flex-start;gap:12px;border:1px solid #fde68a;background:#fffbeb;border-radius:10px;padding:12px 14px">
               <div style="font-size:18px;line-height:1">⏳</div>
               <div style="flex:1">
-                <div style="font-weight:700;color:#92400e">${esc(a.prenom)} ${esc(a.nom)}</div>
+                <div style="font-weight:700;color:#92400e">${esc(a.nom)} ${esc(a.prenom)}</div>
                 <div class="muted" style="margin-top:2px">Matricule : <span class="mono">${esc(a.matricule || '—')}</span></div>
                 <div style="margin-top:4px;color:#92400e;font-size:13px">Son adhésion se termine le <b>${esc(a.date_expiration)}</b>${a.daysLeft === 0 ? ' (aujourd’hui)' : ` dans <b>${a.daysLeft}</b> jour${a.daysLeft > 1 ? 's' : ''}` }.</div>
               </div>
@@ -547,7 +547,7 @@ return `<div class="stat-card" style="--kpi-color:${color}">
         <div style="max-height:220px;overflow:auto">
           ${list.length ? list.map((a) => `
             <button type="button" data-star-view="${a.id}" style="width:100%;text-align:left;border:none;background:transparent;padding:10px 14px;border-bottom:1px solid var(--border,#e2e8f0);cursor:pointer">
-              <div style="font-weight:600;color:var(--text)">${esc((a.prenom || '').trim() || '—')} ${esc((a.nom || '').trim() || '')}</div>
+              <div style="font-weight:600;color:var(--text)">${esc((a.nom || '').trim() || '—')} ${esc((a.prenom || '').trim() || '')}</div>
               <div style="font-size:12px;color:var(--muted,#94a3b8)">${esc(a.matricule || 'Sans matricule')}</div>
             </button>
           `).join('') : `<div class="muted" style="padding:14px">Aucun adhérent dans ce groupe.</div>`}
@@ -684,7 +684,7 @@ return `<div class="stat-card" style="--kpi-color:${color}">
         return `<tr>
         <td><input type="checkbox" class="adh-checkbox" value="${a.id}" /></td>
         <td><span class="mono" style="font-weight:bold; color:var(--gold); font-size:13px;">${esc(a.matricule || '—')}</span></td>
-        <td class="cell-strong">${esc((a.prenom || '').trim() || '—')} ${esc((a.nom || '').trim() || '')}</td>
+        <td class="cell-strong">${esc((a.nom || '').trim() || '—')} ${esc((a.prenom || '').trim() || '')}</td>
         <td>${isBureau ? specialBadge() : esc(a.telephone || '—')}</td>
         <td>${isBureau ? esc(a.bureau_badge_type || '—') : esc(a.wilaya_nom || '—')}</td>
         <td>${isBureau ? esc(a.wilaya_nom || '—') : UI.typeTag(a.type_libelle || '—')}</td>
@@ -1245,8 +1245,8 @@ openModal(
       <div class="profile-head">
         <div id="detailPhoto"><div class="profile-photo-ph">${UI.initials(a.prenom, a.nom)}</div></div>
         <div>
-          <h3 style="font-size:20px;color:var(--text)">${esc(a.prenom || '')} ${esc(a.nom || '')}</h3>
-          ${(a.prenom_ar || a.nom_ar) ? `<div dir="rtl" style="font-size:16px;color:var(--text);margin-top:2px">${esc(a.prenom_ar || '')} ${esc(a.nom_ar || '')}</div>` : ''}
+          <h3 style="font-size:20px;color:var(--text)">${esc(a.nom || '')} ${esc(a.prenom || '')}</h3>
+          ${(a.prenom_ar || a.nom_ar) ? `<div dir="rtl" style="font-size:16px;color:var(--text);margin-top:2px">${esc(a.nom_ar || '')} ${esc(a.prenom_ar || '')}</div>` : ''}
           <div class="mono" style="margin:6px 0">${esc(a.matricule || '—')}</div>
           ${a.type_code === 'BE' ? specialBadge() : UI.typeTag(a.type_libelle)} ${UI.niveauTag(a.niveau || '—')}
           ${a.type_code !== 'BE' ? `<div style="margin-top:8px">${renderStars(a.etoiles)}</div>` : ''}
@@ -2367,12 +2367,7 @@ async function documentsList() {
           MERGE_PDF: '<span class="tag tag-type">Fusion PDF</span>',
           DELETE_PDF_GROUP: '<span class="tag tag-inactif">Suppression PDF</span>',
           BACKUP_CREATE: '<span class="tag tag-gold">Sauvegarde BDD</span>',
-          BACKUP_DOWNLOAD: '<span class="tag tag-type">Téléchargement</span>',
-          FINANCE_ENTREE: '<span class="tag tag-actif">Entrée finance</span>',
-          FINANCE_SORTIE: '<span class="tag tag-inactif">Sortie finance</span>',
-          EDIT_FINANCE_COMPTE: '<span class="tag tag-attente">Compte finance</span>',
-          EDIT_FINANCE_MOUVEMENT: '<span class="tag tag-attente">Mouvement finance</span>',
-          DELETE_FINANCE_MOUVEMENT: '<span class="tag tag-inactif">Suppression mouvement</span>'
+          BACKUP_DOWNLOAD: '<span class="tag tag-type">Téléchargement</span>'
         };
 
         body.innerHTML = logs.map(l => {
@@ -2459,7 +2454,8 @@ async function documentsList() {
     if (sens === 'sortie') {
       const labels = {
         paiement_employe: 'Paiement employé', loyer: 'Loyer', charges: 'Charges',
-        fournitures: 'Fournitures', deplacement: 'Déplacement', autre: 'Autre',
+        fournitures: 'Fournitures', deplacement: 'Déplacement',
+        commission_tva: 'Commissions et TVA', commission: 'Commission', tva: 'TVA', ebanking: 'ebanking', autre: 'Autre',
       };
       return `<span class="tag tag-inactif">${esc(labels[nature] || nature)}</span>`;
     }
@@ -2486,11 +2482,10 @@ async function documentsList() {
       return;
     }
 
-    function compteOptions(sel, { includeCaisse = true } = {}) {
-      return (meta.comptes || [])
-        .filter((x) => includeCaisse || x.code !== 'CAISSE')
-        .map((x) => `<option value="${esc(x.code)}" ${x.code === sel ? 'selected' : ''}>${esc(x.label)}</option>`)
-        .join('');
+    function compteOptions(sel) {
+      return (meta.comptes || []).map((x) =>
+        `<option value="${esc(x.code)}" ${x.code === sel ? 'selected' : ''}>${esc(x.label)}</option>`
+      ).join('');
     }
 
     c.innerHTML = `
@@ -2553,7 +2548,7 @@ async function documentsList() {
         <div class="fin-kpi">
           ${kpiCard('bdl', '🏦', fmtDA(t.bdl), 'Solde BDL', `Virements : ${fmtDA(t.virementsBdl)}`, '#1d4ed8')}
           ${kpiCard('cpa', '🏦', fmtDA(t.cpa), 'Solde CPA', `Virements : ${fmtDA(t.virementsCpa)}`, '#7c3aed')}
-          ${kpiCard('caisse', '💵', fmtDA(t.caisse), 'Solde Caisse', 'Espèces & encaissements', '#b45309')}
+          ${kpiCard('caisse', '💵', fmtDA(t.caisse), 'Solde Caisse', 'Espèces', '#b45309')}
           ${kpiCard('banques', '🏛️', fmtDA(t.banques), 'Total banques (BDL + CPA)', `Virements : ${fmtDA(t.virementsBanques)}`, '#c49b2e')}
           ${kpiCard('all', '💎', fmtDA(t.general), 'Total général', 'Les trois comptes ensemble', '#1a1a1a')}
         </div>
@@ -2622,8 +2617,11 @@ async function documentsList() {
     async function renderEncaissements(body) {
       body.innerHTML = `
         <div class="panel" style="margin-bottom:18px">
-          <div class="panel-head"><h3>Encaisser un paiement</h3></div>
-          <p class="muted" style="margin-bottom:12px">Choisissez le compte d’encaissement (<b>BDL</b>, <b>CPA</b> ou <b>Caisse</b>), l’adhérent qui a payé, le n° de chèque et la somme.</p>
+          <div class="panel-head">
+            <h3>Encaisser un paiement</h3>
+            <button type="button" class="btn btn-gold btn-sm" id="encAddAdhBtn">+ Ajouter un adhérent</button>
+          </div>
+          <p class="muted" style="margin-bottom:12px">Choisissez le compte (<b>BDL</b>, <b>CPA</b> ou <b>Caisse</b>) dans la liste. Ce choix n’est pas modifié quand vous sélectionnez un adhérent.</p>
           <form id="encForm">
             <div class="form-grid">
               <div class="field">
@@ -2640,7 +2638,7 @@ async function documentsList() {
                   ${(meta.naturesEntree || []).map((n) => `<option value="${esc(n.code)}">${esc(n.label)}</option>`).join('')}
                 </select>
               </div>
-              <div class="field">
+              <div class="field" id="encAdherentWrap">
                 <label>Adhérent (ayant payé)</label>
                 <select name="adherent_id" id="encAdherent"><option value="">— Sans adhérent —</option></select>
               </div>
@@ -2661,14 +2659,23 @@ async function documentsList() {
                 <input name="observation" placeholder="Agence, bordereau, remarque…" />
               </div>
             </div>
+            <div id="encNewAdhFields" style="display:none;margin-top:16px;padding-top:14px;border-top:1px solid var(--border, #e2e8f0)">
+              <p class="muted" style="margin-bottom:12px">Personne absente de l’application : renseignez nom, prénom et matricule. L’encaissement ci-dessus lui sera rattaché.</p>
+              <div class="form-grid">
+                <div class="field"><label>Nom *</label><input name="new_nom" id="encNewNom" /></div>
+                <div class="field"><label>Prénom *</label><input name="new_prenom" id="encNewPrenom" /></div>
+                <div class="field"><label>Matricule *</label><input name="new_matricule" id="encNewMatricule" maxlength="40" placeholder="Matricule" /></div>
+              </div>
+            </div>
             <div class="form-error" id="encErr"></div>
             <div class="modal-foot" style="margin-top:8px">
+              <button type="button" class="btn btn-ghost" id="encAddAdhCancel" style="display:none">Annuler l’ajout</button>
               <button type="submit" class="btn btn-gold">Enregistrer l’encaissement</button>
             </div>
           </form>
         </div>
-        <div class="toolbar">
-          <input type="search" id="encSearch" placeholder="Rechercher un adhérent payé…" />
+        <div class="toolbar" style="flex-wrap:wrap;gap:10px">
+          <input type="search" id="encSearch" placeholder="Rechercher (nom, prénom, matricule)…" />
           <select id="encMode">
             <option value="">Tous les modes</option>
             <option value="cheque">Chèques</option>
@@ -2688,7 +2695,7 @@ async function documentsList() {
         const sel = $('#encAdherent');
         const current = sel.value;
         sel.innerHTML = `<option value="">— Sans adhérent —</option>` + list.map((a) =>
-          `<option value="${a.id}" data-mode="${esc(a.paiement_mode || '')}" data-ref="${esc(a.paiement_ref || '')}" data-banque="${esc(a.paiement_banque || '')}">${esc(a.prenom)} ${esc(a.nom)} — ${esc(a.matricule || 'sans matricule')}</option>`
+          `<option value="${a.id}" data-mode="${esc(a.paiement_mode || '')}" data-ref="${esc(a.paiement_ref || '')}">${esc(a.nom)} ${esc(a.prenom)} — ${esc(a.matricule || 'sans matricule')}</option>`
         ).join('');
         if (current) sel.value = current;
 
@@ -2700,7 +2707,7 @@ async function documentsList() {
           </tr></thead><tbody>
           ${list.map((a) => `
             <tr>
-              <td class="cell-strong">${esc(a.prenom)} ${esc(a.nom)}</td>
+              <td class="cell-strong">${esc(a.nom)} ${esc(a.prenom)}</td>
               <td><span class="mono">${esc(a.matricule || '—')}</span></td>
               <td>${natureTag('entree', a.paiement_mode)}</td>
               <td class="mono">${esc(a.paiement_ref || '—')}</td>
@@ -2732,38 +2739,76 @@ async function documentsList() {
       }
 
       function toggleCheque() {
-        const show = $('#encNature').value === 'cheque';
-        $('#encChequeWrap').style.display = show ? '' : 'none';
+        $('#encChequeWrap').style.display = $('#encNature').value === 'cheque' ? '' : 'none';
       }
 
       $('#encNature').onchange = toggleCheque;
       $('#encAdherent').onchange = fillFromAdherent;
       toggleCheque();
 
+      function setAddAdherentMode(on) {
+        const fields = $('#encNewAdhFields');
+        const wrap = $('#encAdherentWrap');
+        const cancel = $('#encAddAdhCancel');
+        const btn = $('#encAddAdhBtn');
+        if (fields) fields.style.display = on ? '' : 'none';
+        if (wrap) wrap.style.display = on ? 'none' : '';
+        if (cancel) cancel.style.display = on ? '' : 'none';
+        if (btn) btn.textContent = on ? 'Adhérent existant' : '+ Ajouter un adhérent';
+        if (on) {
+          if ($('#encAdherent')) $('#encAdherent').value = '';
+          $('#encNewNom')?.focus();
+        } else {
+          if ($('#encNewNom')) $('#encNewNom').value = '';
+          if ($('#encNewPrenom')) $('#encNewPrenom').value = '';
+          if ($('#encNewMatricule')) $('#encNewMatricule').value = '';
+        }
+      }
+      $('#encAddAdhBtn').onclick = () => {
+        const fields = $('#encNewAdhFields');
+        setAddAdherentMode(fields && fields.style.display === 'none');
+      };
+      $('#encAddAdhCancel').onclick = () => setAddAdherentMode(false);
+
       $('#encForm').onsubmit = async (e) => {
         e.preventDefault();
         $('#encErr').textContent = '';
         const f = e.target;
-        const compteEl = $('#encCompte') || f.querySelector('[name="compte_code"]');
-        const compteCode = String(compteEl?.value || '').toUpperCase().trim();
+        const compteCode = String($('#encCompte').value || '').toUpperCase().trim();
         if (!['BDL', 'CPA', 'CAISSE'].includes(compteCode)) {
-          $('#encErr').textContent = 'Choisissez le compte d’encaissement (BDL, CPA ou Caisse).';
+          $('#encErr').textContent = 'Choisissez le compte (BDL, CPA ou Caisse).';
           return;
         }
+        const adding = $('#encNewAdhFields') && $('#encNewAdhFields').style.display !== 'none';
+        let adherentId = f.adherent_id.value || null;
         try {
-          await API.createFinanceMouvement({
+          if (adding) {
+            const nom = String($('#encNewNom')?.value || '').trim();
+            const prenom = String($('#encNewPrenom')?.value || '').trim();
+            const matricule = String($('#encNewMatricule')?.value || '').trim();
+            if (!nom || !prenom || !matricule) {
+              $('#encErr').textContent = 'Nom, prénom et matricule sont obligatoires pour ajouter un adhérent.';
+              return;
+            }
+            const created = await API.createFinanceAdherent({ nom, prenom, matricule });
+            adherentId = created?.id || null;
+          }
+          const saved = await API.createFinanceMouvement({
             compte_code: compteCode,
             sens: 'entree',
             nature: f.nature.value,
             montant: f.montant.value,
             date_mouvement: f.date_mouvement.value,
-            adherent_id: f.adherent_id.value || null,
+            adherent_id: adherentId,
             cheque_numero: f.nature.value === 'cheque' ? f.cheque_numero.value : '',
             observation: f.observation.value,
           });
-          toast('Encaissement enregistré.');
+          toast('Encaissement enregistré sur ' + (saved.compte_code || compteCode) + '.');
+          const keepCompte = compteCode;
           f.reset();
+          $('#encCompte').value = keepCompte;
           f.date_mouvement.value = new Date().toISOString().slice(0, 10);
+          setAddAdherentMode(false);
           toggleCheque();
           loadPayes();
         } catch (err) { $('#encErr').textContent = err.message; }
@@ -2778,6 +2823,7 @@ async function documentsList() {
 
     async function renderSorties(body) {
       const list = await API.financesMouvements({ sens: 'sortie' });
+      const causesManuelles = (meta.motifsSortie || []).filter((m) => !['ebanking', 'commission', 'tva', 'commission_tva'].includes(m.code));
       body.innerHTML = `
         <div class="panel" style="margin-bottom:18px">
           <div class="panel-head"><h3>Nouvelle sortie</h3></div>
@@ -2785,21 +2831,25 @@ async function documentsList() {
             <div class="form-grid">
               <div class="field">
                 <label>Compte débité *</label>
-                <select name="compte_code" required>${compteOptions('CAISSE')}</select>
+                <select name="compte_code" id="outCompte" required>${compteOptions('CAISSE')}</select>
               </div>
               <div class="field">
                 <label>Cause *</label>
                 <select name="nature">
-                  ${(meta.motifsSortie || []).map((m) => `<option value="${esc(m.code)}">${esc(m.label)}</option>`).join('')}
+                  ${causesManuelles.map((m) => `<option value="${esc(m.code)}">${esc(m.label)}</option>`).join('')}
                 </select>
               </div>
               <div class="field">
-                <label>Montant (DA) *</label>
-                <input type="number" name="montant" min="0.01" step="0.01" required />
+                <label>Montant (DA)</label>
+                <input type="number" name="montant" min="0" step="0.01" placeholder="0.00" />
               </div>
               <div class="field">
                 <label>Date</label>
                 <input type="date" name="date_mouvement" value="${esc(new Date().toISOString().slice(0, 10))}" />
+              </div>
+              <div class="field" id="outCommTvaWrap" style="display:none">
+                <label>Commissions et TVA (BDL)</label>
+                <input type="number" name="commission_tva" id="outCommTva" min="0" step="0.01" placeholder="0.00" />
               </div>
               <div class="field full">
                 <label>Détail / bénéficiaire</label>
@@ -2810,6 +2860,7 @@ async function documentsList() {
                 <input name="observation" />
               </div>
             </div>
+            <p class="muted" style="margin-top:8px">Frais ebanking : 2 000 DA le 31 de chaque mois, débités du BDL.</p>
             <div class="form-error" id="outErr"></div>
             <div class="modal-foot" style="margin-top:8px">
               <button type="submit" class="btn btn-gold">Enregistrer la sortie</button>
@@ -2821,20 +2872,48 @@ async function documentsList() {
           ${renderMouvTable(list)}
         </div>
       `;
+      function toggleCommTva() {
+        const isBdl = String($('#outCompte')?.value || '').toUpperCase() === 'BDL';
+        const wrap = $('#outCommTvaWrap');
+        if (wrap) wrap.style.display = isBdl ? '' : 'none';
+        if (!isBdl && $('#outCommTva')) $('#outCommTva').value = '';
+      }
+      $('#outCompte').onchange = toggleCommTva;
+      toggleCommTva();
       $('#outForm').onsubmit = async (e) => {
         e.preventDefault();
         $('#outErr').textContent = '';
         const f = e.target;
+        const compteCode = String(f.compte_code.value || '').toUpperCase();
+        const montant = Number(f.montant.value);
+        const commTva = compteCode === 'BDL' ? Number(f.commission_tva.value) : 0;
+        if (!(montant > 0) && !(commTva > 0)) {
+          $('#outErr').textContent = 'Indiquez un montant, ou commissions et TVA.';
+          return;
+        }
         try {
-          await API.createFinanceMouvement({
-            compte_code: f.compte_code.value,
-            sens: 'sortie',
-            nature: f.nature.value,
-            montant: f.montant.value,
-            date_mouvement: f.date_mouvement.value,
-            motif: f.motif.value,
-            observation: f.observation.value,
-          });
+          if (montant > 0) {
+            await API.createFinanceMouvement({
+              compte_code: compteCode,
+              sens: 'sortie',
+              nature: f.nature.value,
+              montant,
+              date_mouvement: f.date_mouvement.value,
+              motif: f.motif.value,
+              observation: f.observation.value,
+            });
+          }
+          if (commTva > 0) {
+            await API.createFinanceMouvement({
+              compte_code: 'BDL',
+              sens: 'sortie',
+              nature: 'commission_tva',
+              montant: commTva,
+              date_mouvement: f.date_mouvement.value,
+              motif: 'Commissions et TVA',
+              observation: f.observation.value,
+            });
+          }
           toast('Sortie enregistrée.');
           renderTab();
         } catch (err) { $('#outErr').textContent = err.message; }
@@ -2892,7 +2971,7 @@ async function documentsList() {
         </tr></thead><tbody>
         ${list.map((m) => {
           const who = m.adherent_id
-            ? `${esc(m.adherent_prenom || '')} ${esc(m.adherent_nom || '')}`.trim() + (m.adherent_matricule ? ` · ${esc(m.adherent_matricule)}` : '')
+            ? `${esc(m.adherent_nom || '')} ${esc(m.adherent_prenom || '')}`.trim() + (m.adherent_matricule ? ` · ${esc(m.adherent_matricule)}` : '')
             : esc(m.motif || m.observation || '—');
           const amtCls = m.sens === 'entree' ? 'amt-in' : 'amt-out';
           const sign = m.sens === 'entree' ? '+' : '−';
