@@ -418,13 +418,38 @@ const Views = (() => {
         </div>
       </div>
 
-      <div class="dash-panel" style="margin-bottom:28px">
-        <div class="dash-panel-head"><h3>⭐ Classement des adhérents par étoiles</h3></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:20px;margin-bottom:28px">
+      <div class="dash-panel" style="margin-bottom:0">
+        <div class="dash-panel-head"><h3>⭐ Étoiles (0 à 5)</h3></div>
         <div class="dash-panel-body">
-          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px">
-            ${[0,1,2,3].map((star) => renderDashboardStarGroup(star, s.starGroups?.[star] || [])).join('')}
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px">
+            ${[0,1,2,3,4,5].map((star) => renderDashboardStarGroup(star, s.starGroups?.[star] || [])).join('')}
           </div>
         </div>
+      </div>
+
+      <div class="dash-panel" style="margin-bottom:0">
+        <div class="dash-panel-head"><h3>⚠️ Notation négative</h3><span class="muted" style="font-size:12px">0 = aucun · 5 = max</span></div>
+        <div class="dash-panel-body">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px">
+            ${((s.notationGroups || s.malusGroups) ? [0,1,2,3,4,5].map(m => {
+              const list = (s.notationGroups || s.malusGroups)[m] || [];
+              return `<div style="border:1px solid var(--border,#e2e8f0);border-radius:12px;overflow:hidden;background:var(--card,#fff)">
+                <div style="padding:12px 14px;border-bottom:1px solid var(--border,#e2e8f0);display:flex;align-items:center;justify-content:space-between">
+                  <div style="font-weight:700;color:${m===0?'#64748b':'#dc2626'}">${m===0 ? 'Aucune notation négative' : m + ' point' + (m>1?'s':'') + ' en moins'}</div>
+                  <div>${renderNotationNegative(m)}</div>
+                </div>
+                <div style="max-height:180px;overflow:auto">
+                  ${list.length ? list.slice(0,8).map(a=>`<div style="padding:8px 14px;border-bottom:1px solid var(--border,#e2e8f0);display:flex;align-items:center;justify-content:space-between">
+                    <div><div style="font-weight:600;color:var(--text);font-size:13px">${esc((a.nom||'').trim()||'—')} ${esc((a.prenom||'').trim()||'')}</div><div style="font-size:11px;color:var(--muted,#94a3b8)">${esc(a.matricule||'Sans matricule')} · ${esc(a.profession||a.fonction||'—')}</div></div>
+                    <button class="btn btn-dark btn-sm" data-star-view="${a.id}">Voir</button>
+                  </div>`).join('') + (list.length>8?`<div class="muted" style="padding:8px 14px;font-size:12px">+ ${list.length-8} autre(s)…</div>`:'') : `<div class="muted" style="padding:14px">Aucun adhérent.</div>`}
+                </div>
+              </div>`;
+            }).join('') : '<div class="muted">Chargement…</div>')}
+          </div>
+        </div>
+      </div>
       </div>
 
       <!-- RANGÉE : STATS WILAYAS TABLEAU + RÉSUMÉ -->
@@ -533,9 +558,24 @@ return `<div class="stat-card" style="--kpi-color:${color}">
 /* ============ ADHÉRENTS ============ */
 
   function renderStars(count = 0) {
-    const n = Math.max(0, Math.min(3, Number.parseInt(count, 10) || 0));
-    return `<span title="${n} étoile(s)" style="letter-spacing:1px;color:#d4a017">${'★'.repeat(n)}<span style="color:#cbd5e1">${'☆'.repeat(3 - n)}</span></span>`;
+    const n = Math.max(0, Math.min(5, Number.parseInt(count, 10) || 0));
+    return `<span title="${n} étoile(s) sur 5" style="letter-spacing:1px;color:#d4a017">${'★'.repeat(n)}<span style="color:#cbd5e1">${'☆'.repeat(5 - n)}</span></span>`;
   }
+
+  function renderNotationNegative(count = 0) {
+    const n = Math.max(0, Math.min(5, Number.parseInt(count, 10) || 0));
+    if (n === 0) return `<span class="tag" style="background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0">— Aucun</span>`;
+    return `<span title="${n} point(s) en moins" style="letter-spacing:1px;color:#dc2626">${'▼'.repeat(n)}<span style="color:#e2e8f0">${'▽'.repeat(5 - n)}</span></span>`;
+  }
+
+  function renderNotationNegativeCompact(count = 0) {
+    const n = Math.max(0, Math.min(5, Number.parseInt(count, 10) || 0));
+    if (n === 0) return `<span style="color:#94a3b8;font-size:12px">—</span>`;
+    return `<span title="${n} en moins" style="color:#dc2626;font-weight:700;letter-spacing:0.5px">${'●'.repeat(n)}<span style="color:#e2e8f0">${'○'.repeat(5-n)}</span> <small style="color:#dc2626">-${n}</small></span>`;
+  }
+  // compat alias (ancien nom)
+  function renderMalus(count = 0){ return renderNotationNegative(count); }
+  function renderMalusCompact(count = 0){ return renderNotationNegativeCompact(count); }
 
   function renderDashboardStarGroup(star, list = []) {
     return `
@@ -584,9 +624,36 @@ return `<div class="stat-card" style="--kpi-color:${color}">
     const c = container();
     c.innerHTML = `
       <div class="toolbar" style="flex-wrap: wrap; gap: 10px;">
-        <input type="search" id="adhSearch" placeholder="${isBureau ? 'Rechercher (nom, matricule, type badge, téléphone)…' : 'Rechercher (nom, matricule, NIN, document, téléphone)…'}" />
+        <input type="search" id="adhSearch" placeholder="${isBureau ? 'Rechercher (nom, matricule, type badge, téléphone, profession)…' : 'Rechercher (nom, matricule, NIN, document, téléphone, profession)…'}" />
         <select id="adhWilaya"><option value="">Toutes wilayas</option>${REF.wilayas.map((w) => `<option value="${w.code}">${w.code} — ${esc(w.nom)}</option>`).join('')}</select>
         ${isBureau ? '' : `<select id="adhType"><option value="">Tous types</option>${filteredTypeOptions(false)}</select>`}
+        <select id="adhPaiement">
+          <option value="">Tous paiements</option>
+          <option value="paye">✓ Payé</option>
+          <option value="non_paye">✕ Non payé</option>
+          <option value="non_assujetti">⊘ Non assujetti</option>
+          <option value="cheque">Chèque</option>
+          <option value="espece">Espèce</option>
+          <option value="virement">Virement</option>
+        </select>
+        <select id="adhEtoiles" title="Filtrer par étoiles">
+          <option value="">Toutes étoiles</option>
+          <option value="0">0 ★</option>
+          <option value="1">1 ★</option>
+          <option value="2">2 ★</option>
+          <option value="3">3 ★</option>
+          <option value="4">4 ★</option>
+          <option value="5">5 ★</option>
+        </select>
+        <select id="adhNotationNegative" title="Filtrer par notation négative">
+          <option value="">Toutes notations négatives</option>
+          <option value="0">0 −</option>
+          <option value="1">1 −</option>
+          <option value="2">2 −</option>
+          <option value="3">3 −</option>
+          <option value="4">4 −</option>
+          <option value="5">5 −</option>
+        </select>
         <button class="btn btn-dark" id="refreshAdhBtn" title="Rafraîchir">⟳ Rafraîchir</button>
         <button class="btn btn-gold" id="addAdhBtn">+ ${isBureau ? 'Nouveau membre BE' : 'Nouvel adhérent'}</button>
         <button class="btn btn-danger" id="bulkDeleteAdhBtn" style="display: none;">✕ Supprimer la sélection (<span id="bulkAdhCount">0</span>)</button>
@@ -598,12 +665,23 @@ return `<div class="stat-card" style="--kpi-color:${color}">
       const params = {};
       const q = $('#adhSearch').value.trim(); if (q) params.q = q;
       const w = $('#adhWilaya').value; if (w) params.wilaya = w;
+      const p = $('#adhPaiement') ? $('#adhPaiement').value : ''; if (p) params.paiement = p;
       if (isBureau) {
         params.type = 'BE';
       } else {
         const t = $('#adhType').value; if (t) params.type = t;
       }
-      const members = await API.adherents(params);
+      let members = await API.adherents(params);
+      const etoileFilter = $('#adhEtoiles') ? $('#adhEtoiles').value : '';
+      if (etoileFilter !== '') {
+        const ef = parseInt(etoileFilter,10);
+        members = members.filter(a => (parseInt(a.etoiles,10)||0) === ef);
+      }
+      const notationFilter = $('#adhNotationNegative') ? $('#adhNotationNegative').value : '';
+      if (notationFilter !== '') {
+        const nf = parseInt(notationFilter,10);
+        members = members.filter(a => (parseInt(a.notation_negative ?? a.malus,10)||0) === nf);
+      }
       renderMembersTable(members, { mode, reload: load });
       if (!isBureau && $('#adhNotifZone')) {
         const alerts = collectExpirationAlerts(members);
@@ -647,6 +725,11 @@ return `<div class="stat-card" style="--kpi-color:${color}">
     $('#adhSearch').oninput = () => { clearTimeout(timer); timer = setTimeout(load, 280); };
     $('#adhWilaya').onchange = load;
     if (!isBureau) $('#adhType').onchange = load;
+    if ($('#adhPaiement')) $('#adhPaiement').onchange = load;
+    if ($('#adhEtoiles')) $('#adhEtoiles').onchange = load;
+    if ($('#adhNotationNegative')) $('#adhNotationNegative').onchange = load;
+    // compat old id
+    if ($('#adhMalus')) $('#adhMalus').onchange = load;
     $('#refreshAdhBtn').onclick = () => { load(); toast('Liste actualisée.'); };
     $('#addAdhBtn').onclick = () => adherentForm(isBureau ? { type_code: 'BE', niveau: 'Bureau exécutif' } : null, load);
     load();
@@ -668,30 +751,29 @@ return `<div class="stat-card" style="--kpi-color:${color}">
         <th>${isBureau ? 'Badge spécial' : 'Téléphone'}</th>
         <th>${isBureau ? 'Type badge' : 'Wilaya'}</th>
         <th>${isBureau ? 'Wilaya' : 'Type'}</th>
-        <th>${isBureau ? 'Adhésion' : 'Étoiles'}</th>
-        <th>${isBureau ? 'Étoiles' : 'Fin adhésion'}</th>
-        <th>${isBureau ? 'Fin adhésion' : 'Payé'}</th>
-        ${isBureau ? '<th>Payé</th>' : ''}
+        <th>Notation</th>
+        <th>${isBureau ? 'Fin adhésion' : 'Fin adhésion'}</th>
+        <th>Payé</th>
         <th></th>
       </tr></thead><tbody>
       ${list.map((a) => {
         const expiry = getExpirationInfo(a);
         const expiryHtml = expiry
-          ? (expiry
-              ? `<div style="font-weight:600;color:${expiry.isExpired ? '#dc2626' : expiry.isSoon ? '#d97706' : 'var(--text)'}">${esc(expiry.expirationText)}</div><div class="muted" style="font-size:11px">${expiry.isExpired ? 'Expirée' : expiry.isSoon ? `Expire dans ${expiry.daysLeft} jour${expiry.daysLeft > 1 ? 's' : ''}` : 'Valide'}</div>`
-              : '<span class="muted">—</span>')
-          : '';
+          ? `<div style="font-weight:600;color:${expiry.isExpired ? '#dc2626' : expiry.isSoon ? '#d97706' : 'var(--text)'}">${esc(expiry.expirationText)}</div><div class="muted" style="font-size:11px">${expiry.isExpired ? 'Expirée' : expiry.isSoon ? `Expire dans ${expiry.daysLeft} jour${expiry.daysLeft > 1 ? 's' : ''}` : 'Valide'}</div>`
+          : '<span class="muted">—</span>';
+        const cvBadge = (a.profession || a.fonction || a.diplome || a.nom_soc) ? `<div style="margin-top:3px"><span class="tag" style="background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;font-size:10px;padding:2px 6px">📄 ${esc((a.profession || a.fonction || '').slice(0,18) || a.nom_soc?.slice(0,18) || 'CV')}</span></div>` : '';
+        const nameCell = `<div class="cell-strong">${esc((a.nom || '').trim() || '—')} ${esc((a.prenom || '').trim() || '')}</div>${a.nom_soc ? `<div style="font-size:11px;color:var(--muted)">${esc(a.nom_soc)}</div>` : ''}${cvBadge}`;
+        const paiementHtml = a.paiement_mode === 'non_assujetti' ? '<span class="tag" style="background:#f0ead8;color:#8a6e18">⊘ Non assujetti</span>' : a.paiement_mode ? '<span class="tag tag-actif">✓ Oui</span>' : '<span class="tag tag-inactif">✕ Non</span>';
         return `<tr>
         <td><input type="checkbox" class="adh-checkbox" value="${a.id}" /></td>
         <td><span class="mono" style="font-weight:bold; color:var(--gold); font-size:13px;">${esc(a.matricule || '—')}</span></td>
-        <td class="cell-strong">${esc((a.nom || '').trim() || '—')} ${esc((a.prenom || '').trim() || '')}</td>
+        <td>${nameCell}</td>
         <td>${isBureau ? specialBadge() : esc(a.telephone || '—')}</td>
         <td>${isBureau ? esc(a.bureau_badge_type || '—') : esc(a.wilaya_nom || '—')}</td>
         <td>${isBureau ? esc(a.wilaya_nom || '—') : UI.typeTag(a.type_libelle || '—')}</td>
-        <td>${isBureau ? `<span class="muted">${esc(fmtDate(a.date_adhesion))}</span>` : renderStars(a.etoiles)}</td>
-        <td>${isBureau ? renderStars(a.etoiles) : expiryHtml}</td>
-        <td>${isBureau ? expiryHtml : (a.paiement_mode === 'non_assujetti' ? '<span class="tag" style="background:#f0ead8;color:#8a6e18">⊘ Non assujetti</span>' : a.paiement_mode ? '<span class="tag tag-actif">✓ Oui</span>' : '<span class="tag tag-inactif">✕ Non</span>')}</td>
-        ${isBureau ? `<td>${a.paiement_mode === 'non_assujetti' ? '<span class="tag" style="background:#f0ead8;color:#8a6e18">⊘ Non assujetti</span>' : a.paiement_mode ? '<span class="tag tag-actif">✓ Oui</span>' : '<span class="tag tag-inactif">✕ Non</span>'}</td>` : ''}
+        <td>${(parseInt(a.notation_negative ?? a.malus,10)||0) > 0 ? renderNotationNegativeCompact(a.notation_negative ?? a.malus) : renderStars(a.etoiles)}</td>
+        <td>${expiryHtml}</td>
+        <td>${paiementHtml}</td>
         <td><div class="row-actions">
           <button class="btn btn-dark btn-sm" data-view="${a.id}">Voir</button>
           ${isBureau ? '' : `<button class="btn btn-gold btn-sm" data-renew="${a.id}">Renouveler</button>`}
@@ -699,7 +781,8 @@ return `<div class="stat-card" style="--kpi-color:${color}">
           <button class="btn btn-danger btn-sm" data-del="${a.id}">✕</button>
         </div></td>
       </tr>`;}).join('')}
-      </tbody></table></div>`;
+      </tbody></table></div>
+      <div class="muted" style="margin-top:8px;font-size:12px">★ Notation : étoiles (or) ou <span style="color:#dc2626">● points en moins</span> (rouge) si noté</div>`;
 
     const selectAll = $('#selectAllAdh');
     const checkboxes = t.querySelectorAll('.adh-checkbox');
@@ -747,16 +830,26 @@ return `<div class="stat-card" style="--kpi-color:${color}">
     const currPaiementRef = adh?.paiement_ref || '';
     const currPaiementBanque = adh?.paiement_banque || '';
     const currEtoiles = Number.parseInt(adh?.etoiles, 10) || 0;
+    const currNotationNegative = Number.parseInt(adh?.notation_negative ?? adh?.malus, 10) || 0;
     const currBureauCode = adh?.bureau_code || '';
     const currBadgeType = adh?.bureau_badge_type || '';
     const currQualiteAr = adh?.qualite_ar || '';
     const currMatricule = adh?.matricule || '';
+    const currFonction = adh?.fonction || '';
+    const currDiplome = adh?.diplome || '';
+    const currProfession = adh?.profession || '';
     const currCarteRemise = Number.parseInt(adh?.carte_remise, 10) === 1;
     const allowBE = canAccessBE();
+    const hasCV = !!(currFonction || currDiplome || currProfession);
 openModal(
   isRenewal ? "Renouveler l'adhésion" : (isEdit ? "Modifier l'adhérent" : 'Nouvelle fiche'),
   `
   <style>
+    #modal .modal { max-width: 900px !important; width: 96% !important; }
+    #cvSection { grid-column:1 / -1 !important; width:100% !important; margin:18px 0 0 0 !important; padding:32px 28px !important; border:1.5px solid var(--border-strong) !important; border-radius:16px !important; background:var(--panel) !important; box-shadow:var(--shadow) !important; box-sizing:border-box !important; }
+    #cvSection .form-grid { gap:22px !important; grid-template-columns:1fr 1fr !important; }
+    #cvSection .field input { padding:14px 16px !important; font-size:16px !important; height:52px !important; border-radius:10px !important; }
+    #cvSection .field label { font-size:14px !important; font-weight:700 !important; }
     /* Correctifs formulaire adhérent */
     #adhForm .adh-check-field {
       display: flex !important;
@@ -838,9 +931,9 @@ openModal(
         <input name="prenom_ar" value="${esc(adh?.prenom_ar || '')}" dir="rtl" />
       </div>
 
-      <div class="field">
-        <label>Nom de société</label>
-        <input name="nom_soc" value="${esc(adh?.nom_soc || '')}"  />
+      <div class="field" style="display:none">
+        <label>Nom de société (ancien)</label>
+        <input name="nom_soc" id="fNomSocTop" value="${esc(adh?.nom_soc || '')}"  />
       </div>
 
       <div class="field">
@@ -964,12 +1057,7 @@ openModal(
         <input type="file" name="photo" accept="image/*" />
       </div>
 
-      <div class="field adh-check-field">
-        <label class="adh-check-label">
-          <input type="checkbox" name="carte_remise" value="1" ${currCarteRemise ? 'checked' : ''} />
-          <span>Carte remise</span>
-        </label>
-      </div>
+
 
       <div class="field" id="fBureauCodeWrap">
         <label>Code Bureau exécutif (3 caractères) *</label>
@@ -982,13 +1070,65 @@ openModal(
       </div>
 
       <div class="field" id="fEtoilesWrap">
-        <label>Classement étoiles</label>
+        <label>Étoiles</label>
         <select name="etoiles" id="fEtoiles">
-          <option value="0" ${currEtoiles === 0 ? 'selected' : ''}>0 étoile</option>
-          <option value="1" ${currEtoiles === 1 ? 'selected' : ''}>1 étoile</option>
-          <option value="2" ${currEtoiles === 2 ? 'selected' : ''}>2 étoiles</option>
-          <option value="3" ${currEtoiles === 3 ? 'selected' : ''}>3 étoiles</option>
+          <option value="0" ${currEtoiles === 0 ? 'selected' : ''}>0 ★ — Aucune</option>
+          <option value="1" ${currEtoiles === 1 ? 'selected' : ''}>1 ★</option>
+          <option value="2" ${currEtoiles === 2 ? 'selected' : ''}>2 ★★</option>
+          <option value="3" ${currEtoiles === 3 ? 'selected' : ''}>3 ★★★</option>
+          <option value="4" ${currEtoiles === 4 ? 'selected' : ''}>4 ★★★★</option>
+          <option value="5" ${currEtoiles === 5 ? 'selected' : ''}>5 ★★★★★ — Excellent</option>
         </select>
+      </div>
+
+      <div class="field" id="fNotationNegativeWrap">
+        <label>Notation négative</label>
+        <select name="notation_negative" id="fNotationNegative">
+          <option value="0" ${currNotationNegative === 0 ? 'selected' : ''}>0 — Aucune</option>
+          <option value="1" ${currNotationNegative === 1 ? 'selected' : ''}>1 point en moins</option>
+          <option value="2" ${currNotationNegative === 2 ? 'selected' : ''}>2 points en moins</option>
+          <option value="3" ${currNotationNegative === 3 ? 'selected' : ''}>3 points en moins</option>
+          <option value="4" ${currNotationNegative === 4 ? 'selected' : ''}>4 points en moins</option>
+          <option value="5" ${currNotationNegative === 5 ? 'selected' : ''}>5 points en moins — Max</option>
+        </select>
+      </div>
+
+      <div class="field adh-check-field">
+        <label class="adh-check-label">
+          <input type="checkbox" name="carte_remise" value="1" ${currCarteRemise ? 'checked' : ''} />
+          <span>Carte remise</span>
+        </label>
+      </div>   
+
+      <div class="field full" style="margin-top:4px">
+        <button type="button" class="btn btn-dark btn-sm" id="toggleCVBtn" style="width:100%;justify-content:center">
+          <span>📄 CV — Informations professionnelles</span>
+        </button>
+      </div>
+
+      <div id="cvSection" style="${hasCV ? "" : "display:none;"}border:1.5px solid var(--border-strong);border-radius:16px;padding:32px 28px;background:var(--panel);margin:18px 0 0 0;box-shadow:var(--shadow);width:100%;box-sizing:border-box;grid-column:1 / -1">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+          <span style="font-size:16px">📄</span>
+          <strong style="font-size:14px;color:var(--text)">Informations professionnelles</strong>
+        </div>
+        <div class="form-grid" style="margin:0;gap:20px">
+          <div class="field">
+            <label>Société / Entreprise</label>
+            <input name="nom_soc" id="fNomSocCV" value="${esc(adh?.nom_soc || '')}"  style="padding:14px 16px;font-size:16px;height:52px" />
+          </div>
+          <div class="field">
+            <label>Fonction</label>
+            <input name="fonction" id="fFonction" value="${esc(currFonction)}" style="padding:14px 16px;font-size:16px;height:52px" />
+          </div>
+          <div class="field">
+            <label>Diplôme</label>
+            <input name="diplome" id="fDiplome" value="${esc(currDiplome)}"  style="padding:14px 16px;font-size:16px;height:52px" />
+          </div>
+          <div class="field">
+            <label>Profession</label>
+            <input name="profession" id="fProfession" value="${esc(currProfession)}"  style="padding:14px 16px;font-size:16px;height:52px" />
+          </div>
+        </div>
       </div>
 
      <div class="field full" id="fNonAssujettiWrap">
@@ -1186,6 +1326,24 @@ openModal(
       } catch {}
     }
 
+    // CV toggle + sync societe
+    const cvSection = $('#cvSection');
+    const toggleCVBtn = $('#toggleCVBtn');
+    const fNomSocCV = $('#fNomSocCV');
+    const fNomSocTop = $('#fNomSocTop');
+    if (toggleCVBtn && cvSection) {
+      toggleCVBtn.onclick = () => {
+        const hidden = cvSection.style.display === 'none';
+        cvSection.style.display = hidden ? '' : 'none';
+      };
+    }
+    if (fNomSocCV && fNomSocTop) {
+      fNomSocCV.oninput = () => { fNomSocTop.value = fNomSocCV.value; };
+      fNomSocTop.oninput = () => { fNomSocCV.value = fNomSocTop.value; };
+      // init sync
+      fNomSocTop.value = fNomSocCV.value;
+    }
+
     $('#fDocType').onchange = updateDocHint;
     $('#fWilaya').onchange = refreshMatricule;
     $('#fManualMatricule').oninput = () => {
@@ -1216,7 +1374,15 @@ openModal(
     $('#adhForm').onsubmit = async (e) => {
       e.preventDefault();
       $('#adhFormErr').textContent = '';
+      // sync societe from CV section
+      const cvNomSoc = $('#fNomSocCV')?.value || '';
+      const topNomSoc = $('#fNomSocTop')?.value || '';
+      const finalSoc = cvNomSoc || topNomSoc;
+      if ($('#fNomSocCV')) $('#fNomSocCV').value = finalSoc;
+      if ($('#fNomSocTop')) $('#fNomSocTop').value = finalSoc;
       const fd = new FormData(e.target);
+      // ensure nom_soc is correctly set (FormData may have duplicate, keep last)
+      fd.set('nom_soc', finalSoc);
       if ($('#fNonAssujetti') && $('#fNonAssujetti').checked) { fd.set('paiement_mode', 'non_assujetti'); fd.delete('paiement_ref'); fd.delete('paiement_banque'); }
       try {
         let saved = null;
@@ -1249,13 +1415,16 @@ openModal(
           ${(a.prenom_ar || a.nom_ar) ? `<div dir="rtl" style="font-size:16px;color:var(--text);margin-top:2px">${esc(a.nom_ar || '')} ${esc(a.prenom_ar || '')}</div>` : ''}
           <div class="mono" style="margin:6px 0">${esc(a.matricule || '—')}</div>
           ${a.type_code === 'BE' ? specialBadge() : UI.typeTag(a.type_libelle)} ${UI.niveauTag(a.niveau || '—')}
-          ${a.type_code !== 'BE' ? `<div style="margin-top:8px">${renderStars(a.etoiles)}</div>` : ''}
+          <div style="margin-top:8px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+            ${renderStars(a.etoiles)}
+            <span style="color:#dc2626">${renderNotationNegativeCompact(a.notation_negative ?? a.malus)}</span>
+          </div>
+          ${(a.nom_soc || a.profession || a.fonction) ? `<div class="muted" style="margin-top:6px;font-size:12px">🏢 ${esc(a.nom_soc || '—')} ${a.profession ? '· ' + esc(a.profession) : ''} ${a.fonction ? '· ' + esc(a.fonction) : ''}</div>` : ''}
         </div>
       </div>
       <div class="detail-grid">
         ${detailItem('Nom (Français)', a.nom || '—')}
         ${detailItem('Prénom (Français)', a.prenom || '—')}
-        ${a.nom_soc ? detailItem('Nom de société', a.nom_soc) : ''}
         ${detailItem('Nom (Arabe)', a.nom_ar || '—')}
         ${detailItem('Prénom (Arabe)', a.prenom_ar || '—')}
         ${detailItem('Téléphone', a.telephone || '—')}
@@ -1273,10 +1442,23 @@ openModal(
         ${a.type_code === 'BE' ? '' : detailItem("Fin d'adhésion", expiry ? expiry.expirationText : '—')}
         ${detailItem('Année', a.annee || '—')}
         ${detailItem('Carte', Number.parseInt(a.carte_remise, 10) === 1 ? 'Remise' : 'Non remise')}
-        ${a.type_code === 'BE' ? detailItem('Code BE', a.bureau_code || '—') : detailItem('Étoiles', `${a.etoiles ?? 0} / 3`)}
-        ${a.type_code === 'BE' ? detailItem('Type badge', a.bureau_badge_type || '—') : detailItem('Mode de paiement', paiementLabel(a.paiement_mode) || '—')}
-        ${a.type_code === 'BE' ? detailItem('Mode de paiement', paiementLabel(a.paiement_mode) || '—') : detailItem('Référence paiement', a.paiement_ref || '—')}
+        ${detailItem('Notation (étoiles / négative)', `${a.etoiles ?? 0}/5 ${'★'.repeat(a.etoiles||0)}${'☆'.repeat(5-(a.etoiles||0))}  —  ${(a.notation_negative ?? a.malus ?? 0)==0 ? 'Aucune notation négative' : (a.notation_negative ?? a.malus)+' point(s) en moins'}`)}
+        ${a.type_code === 'BE' ? detailItem('Code BE', a.bureau_code || '—') : ''}
+        ${a.type_code === 'BE' ? detailItem('Type badge', a.bureau_badge_type || '—') : ''}
+        ${detailItem('Mode de paiement', paiementLabel(a.paiement_mode) || '—')}
+        ${detailItem('Référence paiement', a.paiement_ref || '—')}
         ${detailItem('Banque / CCP', a.paiement_banque || '—')}
+      </div>
+
+      <div class="panel" style="margin-top:14px">
+        <div class="panel-head"><h3>📄 CV — Informations professionnelles</h3></div>
+        <div class="detail-grid">
+          ${detailItem('Société / Entreprise', a.nom_soc || '—')}
+          ${detailItem('Fonction', a.fonction || '—')}
+          ${detailItem('Diplôme', a.diplome || '—')}
+          ${detailItem('Profession', a.profession || '—')}
+        </div>
+        <div class="muted" style="margin-top:8px;font-size:12px">Pas de CV détaillé — uniquement ces 4 champs.</div>
       </div>
       ${a.description ? `<div class="panel" style="margin-top:14px"><div class="panel-head"><h3>📝 Description / Notes</h3></div><div style="line-height:1.6;white-space:pre-wrap">${esc(a.description)}</div></div>` : ''}
       <div class="modal-foot">

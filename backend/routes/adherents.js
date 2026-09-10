@@ -29,6 +29,9 @@ const router = express.Router();
 
 function enrich(a) {
   if (!a) return a;
+  // compat: alias notation_negative <-> malus
+  if (a.notation_negative !== undefined && a.malus === undefined) a.malus = a.notation_negative;
+  if (a.malus !== undefined && a.notation_negative === undefined) a.notation_negative = a.malus;
   let tObj = null;
   if (a.type_code === 'AD') {
     const isGold = (a.niveau && a.niveau.toLowerCase().includes('gold'));
@@ -115,8 +118,15 @@ function normalizeBureauCode(v) {
 function normalizeEtoiles(v) {
   const n = Number.parseInt(v, 10);
   if (Number.isNaN(n)) return 0;
-  return Math.max(0, Math.min(3, n));
+  return Math.max(0, Math.min(5, n));
 }
+
+function normalizeNotationNegative(v) {
+  const n = Number.parseInt(v, 10);
+  if (Number.isNaN(n)) return 0;
+  return Math.max(0, Math.min(5, n));
+}
+function normalizeMalus(v){ return normalizeNotationNegative(v); } // compat
 
 function normalizeCarteRemise(v) {
   if (v === true || v === 1 || v === '1' || v == 'on' || v === 'true') return 1;
@@ -142,6 +152,7 @@ function validate(b, { partial = false } = {}) {
   const bureau_code = normalizeBureauCode(b.bureau_code);
   const bureau_badge_type = opt(b.bureau_badge_type);
   const etoiles = normalizeEtoiles(b.etoiles);
+  const notation_negative = normalizeNotationNegative(b.notation_negative ?? b.malus);
 
   if (type_code === 'BE') {
     if (!bureau_code || bureau_code.length !== 3) errors.push('Le code Bureau exécutif doit contenir exactement 3 caractères.');
@@ -226,13 +237,13 @@ router.get('/preview/matricule', authenticate, authorize('admin', 'president', '
 router.get('/', authenticate, authorize('admin', 'president', 'perm:adherents_manage'), async (req, res) => {
   try {
     await assureMatricules();
-    const { q, wilaya, type, validite } = req.query;
+    const { q, wilaya, type, validite, paiement } = req.query;
     let sql = 'SELECT * FROM adherents WHERE 1=1';
     const params = [];
     if (q) {
-      sql += ' AND (nom LIKE ? OR prenom LIKE ? OR matricule LIKE ? OR telephone LIKE ? OR bureau_badge_type LIKE ? OR email LIKE ?)';
+      sql += ' AND (nom LIKE ? OR prenom LIKE ? OR matricule LIKE ? OR telephone LIKE ? OR bureau_badge_type LIKE ? OR email LIKE ? OR profession LIKE ? OR fonction LIKE ?)';
       const like = `%${q}%`;
-      params.push(like, like, like, like, like, like);
+      params.push(like, like, like, like, like, like, like, like);
     }
     if (wilaya) { sql += ' AND wilaya_code = ?'; params.push(wilaya); }
     if (type) {
@@ -254,8 +265,63 @@ router.get('/', authenticate, authorize('admin', 'president', 'perm:adherents_ma
       sql += " AND (date_adhesion IS NOT NULL AND DATE_ADD(date_adhesion, INTERVAL 1 YEAR) < CURDATE())";
     }
 
+    if (paiement === 'paye') {
+      sql += " AND paiement_mode IS NOT NULL AND paiement_mode <> ''";
+    } else if (paiement === 'non_paye') {
+      sql += " AND (paiement_mode IS NULL OR paiement_mode = '')";
+    } else if (paiement === 'non_assujetti') {
+      sql += " AND paiement_mode = 'non_assujetti'";
+    } else if (paiement === 'cheque' || paiement === 'espece' || paiement === 'virement') {
+      sql += " AND paiement_mode = ?";
+      params.push(paiement);
+    }
+
     sql += ' ORDER BY created_at DESC';
-    const rows = await query(sql, params);
+    let rows;
+    try {
+      rows = await query(sql, params);
+    } catch (e) {
+      // fallback si profession/fonction n'existent pas encore
+      if (String(e.message).includes('profession') || String(e.message).includes('fonction')) {
+        let sql2 = 'SELECT * FROM adherents WHERE 1=1';
+        const params2 = [];
+        if (q) {
+          sql2 += ' AND (nom LIKE ? OR prenom LIKE ? OR matricule LIKE ? OR telephone LIKE ? OR bureau_badge_type LIKE ? OR email LIKE ?)';
+          const like2 = `%${q}%`;
+          params2.push(like2, like2, like2, like2, like2, like2);
+        }
+        if (wilaya) { sql2 += ' AND wilaya_code = ?'; params2.push(wilaya); }
+        if (type) {
+          if (type === 'AD_simple') {
+            sql2 += " AND type_code = 'AD' AND (niveau = 'Adhérent Simple' OR niveau IS NULL OR niveau = '')";
+          } else if (type === 'AD_gold') {
+            sql2 += " AND type_code = 'AD' AND (niveau = 'Adhérent Gold' OR niveau = 'Adhérent gold')";
+          } else {
+            sql2 += ' AND type_code = ?';
+            params2.push(type);
+          }
+        } else {
+          sql2 += " AND (type_code IS NULL OR type_code <> 'BE')";
+        }
+        if (validite === 'valide') {
+          sql2 += " AND (date_adhesion IS NOT NULL AND DATE_ADD(date_adhesion, INTERVAL 1 YEAR) >= CURDATE())";
+        } else if (validite === 'expire') {
+          sql2 += " AND (date_adhesion IS NOT NULL AND DATE_ADD(date_adhesion, INTERVAL 1 YEAR) < CURDATE())";
+        }
+        if (paiement === 'paye') {
+          sql2 += " AND paiement_mode IS NOT NULL AND paiement_mode <> ''";
+        } else if (paiement === 'non_paye') {
+          sql2 += " AND (paiement_mode IS NULL OR paiement_mode = '')";
+        } else if (paiement === 'non_assujetti') {
+          sql2 += " AND paiement_mode = 'non_assujetti'";
+        } else if (paiement === 'cheque' || paiement === 'espece' || paiement === 'virement') {
+          sql2 += " AND paiement_mode = ?";
+          params2.push(paiement);
+        }
+        sql2 += ' ORDER BY created_at DESC';
+        rows = await query(sql2, params2);
+      } else { throw e; }
+    }
     res.json(rows.map(enrich));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -305,15 +371,42 @@ router.post('/', authenticate, authorize('admin', 'president', 'perm:adherents_a
     const paiement = normalizePaiementData(b);
     const niveau = normalizeNiveau(type_code, b.niveau, bureau_badge_type);
     const etoiles = type_code === 'BE' ? 0 : normalizeEtoiles(b.etoiles);
+    const notation_negative = normalizeNotationNegative(b.notation_negative ?? b.malus);
     const carte_remise = normalizeCarteRemise(b.carte_remise);
     const qualite_ar = isEtranger(wilaya_code) ? opt(b.qualite_ar) : null;
+    const fonction = opt(b.fonction);
+    const diplome = opt(b.diplome);
+    const profession = opt(b.profession);
 
-    const result = await run(
-      `INSERT INTO adherents (matricule, nom, prenom, nom_soc, nom_ar, prenom_ar, telephone, email, whatsapp, viber, adresse_personnelle, date_naissance, nin, doc_type,doc_numero, doc_numero_2, photo, wilaya_code, type_code, niveau, num_ordre, annee, date_adhesion, description, paiement_mode, paiement_banque, paiement_ref, bureau_code, bureau_badge_type, qualite_ar, etoiles, carte_remise)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [matricule, text(b.nom), text(b.prenom), opt(b.nom_soc,''), text(b.nom_ar), text(b.prenom_ar), opt(b.telephone), opt(b.email), opt(b.whatsapp), opt(b.viber), opt(b.adresse_personnelle), opt(b.date_naissance),opt(b.nin), opt(b.doc_type, 'RC'), opt(b.doc_numero), opt(b.doc_numero_2),
-        photo, wilaya_code, type_code, niveau, num_ordre, annee, date_adhesion, description, paiement.paiement_mode, paiement.paiement_banque, paiement.paiement_ref, bureau_code, bureau_badge_type, qualite_ar, etoiles, carte_remise]
-    );
+    let result;
+    try {
+      result = await run(
+        `INSERT INTO adherents (matricule, nom, prenom, nom_soc, nom_ar, prenom_ar, telephone, email, whatsapp, viber, adresse_personnelle, date_naissance, nin, doc_type,doc_numero, doc_numero_2, photo, wilaya_code, type_code, niveau, num_ordre, annee, date_adhesion, description, paiement_mode, paiement_banque, paiement_ref, bureau_code, bureau_badge_type, qualite_ar, etoiles, notation_negative, malus, fonction, diplome, profession, carte_remise)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [matricule, text(b.nom), text(b.prenom), opt(b.nom_soc,''), text(b.nom_ar), text(b.prenom_ar), opt(b.telephone), opt(b.email), opt(b.whatsapp), opt(b.viber), opt(b.adresse_personnelle), opt(b.date_naissance),opt(b.nin), opt(b.doc_type, 'RC'), opt(b.doc_numero), opt(b.doc_numero_2),
+          photo, wilaya_code, type_code, niveau, num_ordre, annee, date_adhesion, description, paiement.paiement_mode, paiement.paiement_banque, paiement.paiement_ref, bureau_code, bureau_badge_type, qualite_ar, etoiles, notation_negative, notation_negative, fonction, diplome, profession, carte_remise]
+      );
+    } catch (e) {
+      // fallback si une des colonnes n'existe pas encore (ancienne DB)
+      if (String(e.message).includes('notation_negative') || String(e.message).includes('malus')) {
+        try {
+          result = await run(
+            `INSERT INTO adherents (matricule, nom, prenom, nom_soc, nom_ar, prenom_ar, telephone, email, whatsapp, viber, adresse_personnelle, date_naissance, nin, doc_type,doc_numero, doc_numero_2, photo, wilaya_code, type_code, niveau, num_ordre, annee, date_adhesion, description, paiement_mode, paiement_banque, paiement_ref, bureau_code, bureau_badge_type, qualite_ar, etoiles, fonction, diplome, profession, carte_remise)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+            [matricule, text(b.nom), text(b.prenom), opt(b.nom_soc,''), text(b.nom_ar), text(b.prenom_ar), opt(b.telephone), opt(b.email), opt(b.whatsapp), opt(b.viber), opt(b.adresse_personnelle), opt(b.date_naissance),opt(b.nin), opt(b.doc_type, 'RC'), opt(b.doc_numero), opt(b.doc_numero_2),
+              photo, wilaya_code, type_code, niveau, num_ordre, annee, date_adhesion, description, paiement.paiement_mode, paiement.paiement_banque, paiement.paiement_ref, bureau_code, bureau_badge_type, qualite_ar, etoiles, fonction, diplome, profession, carte_remise]
+          );
+        } catch (e2) {
+          // dernier fallback avec malus seul
+          result = await run(
+            `INSERT INTO adherents (matricule, nom, prenom, nom_soc, nom_ar, prenom_ar, telephone, email, whatsapp, viber, adresse_personnelle, date_naissance, nin, doc_type,doc_numero, doc_numero_2, photo, wilaya_code, type_code, niveau, num_ordre, annee, date_adhesion, description, paiement_mode, paiement_banque, paiement_ref, bureau_code, bureau_badge_type, qualite_ar, etoiles, malus, fonction, diplome, profession, carte_remise)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+            [matricule, text(b.nom), text(b.prenom), opt(b.nom_soc,''), text(b.nom_ar), text(b.prenom_ar), opt(b.telephone), opt(b.email), opt(b.whatsapp), opt(b.viber), opt(b.adresse_personnelle), opt(b.date_naissance),opt(b.nin), opt(b.doc_type, 'RC'), opt(b.doc_numero), opt(b.doc_numero_2),
+              photo, wilaya_code, type_code, niveau, num_ordre, annee, date_adhesion, description, paiement.paiement_mode, paiement.paiement_banque, paiement.paiement_ref, bureau_code, bureau_badge_type, qualite_ar, etoiles, notation_negative, fonction, diplome, profession, carte_remise]
+          );
+        }
+      } else { throw e; }
+    }
 
     const targetId = result?.insertId || result?.id || result;
     let created = null;
@@ -328,7 +421,7 @@ router.post('/', authenticate, authorize('admin', 'president', 'perm:adherents_a
         telephone: opt(b.telephone), email: opt(b.email), whatsapp: opt(b.whatsapp), viber: opt(b.viber), adresse_personnelle: opt(b.adresse_personnelle), date_naissance: opt(b.date_naissance),nin: opt(b.nin), doc_type: opt(b.doc_type, 'RC'), doc_numero: opt(b.doc_numero), doc_numero_2: opt(b.doc_numero_2), photo,
         wilaya_code, type_code, niveau, num_ordre, annee, date_adhesion,
         description, paiement_mode: paiement.paiement_mode, paiement_banque: paiement.paiement_banque, paiement_ref: paiement.paiement_ref,
-        bureau_code, bureau_badge_type, qualite_ar, etoiles, carte_remise
+        bureau_code, bureau_badge_type, qualite_ar, etoiles, notation_negative, fonction, diplome, profession, carte_remise
       };
     }
 
@@ -361,8 +454,12 @@ router.put('/:id', authenticate, authorize('admin', 'president', 'perm:adherents
     const bureau_badge_type = type_code === 'BE' ? opt(b.bureau_badge_type) : null;
     const niveau = normalizeNiveau(type_code, b.niveau, bureau_badge_type);
     const etoiles = type_code === 'BE' ? 0 : normalizeEtoiles(b.etoiles);
+    const notation_negative = normalizeNotationNegative(b.notation_negative ?? b.malus);
     const carte_remise = normalizeCarteRemise(b.carte_remise);
     const qualite_ar = isEtranger(wilaya_code) ? opt(b.qualite_ar) : null;
+    const fonction = opt(b.fonction);
+    const diplome = opt(b.diplome);
+    const profession = opt(b.profession);
 
     let matricule = a.matricule;
     let num_ordre = a.num_ordre;
@@ -381,12 +478,32 @@ router.put('/:id', authenticate, authorize('admin', 'president', 'perm:adherents
       return res.status(409).json({ error: 'Ce matricule existe déjà. Vérifiez le code Bureau exécutif.' });
     }
 
-    await run(
-      `UPDATE adherents SET matricule=?, nom=?, prenom=?, nom_soc=?, nom_ar=?, prenom_ar=?, telephone=?, email=?, whatsapp=?, viber=?, adresse_personnelle=?, date_naissance=?, nin=?, doc_type=?, doc_numero=?, doc_numero_2=?, photo=?,
-       wilaya_code=?, type_code=?, niveau=?, num_ordre=?, annee=?, date_adhesion=?, description=?, paiement_mode=?, paiement_banque=?, paiement_ref=?, bureau_code=?, bureau_badge_type=?, qualite_ar=?, etoiles=?, carte_remise=? WHERE id=?`,
-      [matricule, text(b.nom), text(b.prenom), opt(b.nom_soc), text(b.nom_ar), text(b.prenom_ar), opt(b.telephone), opt(b.email), opt(b.whatsapp), opt(b.viber), opt(b.adresse_personnelle),opt(b.date_naissance), opt(b.nin), opt(b.doc_type, 'RC'), opt(b.doc_numero), opt(b.doc_numero_2),
-        photo, wilaya_code, type_code, niveau, num_ordre, annee, date_adhesion, description, paiement.paiement_mode, paiement.paiement_banque, paiement.paiement_ref, bureau_code, bureau_badge_type, qualite_ar, etoiles, carte_remise, a.id]
-    );
+    try {
+      await run(
+        `UPDATE adherents SET matricule=?, nom=?, prenom=?, nom_soc=?, nom_ar=?, prenom_ar=?, telephone=?, email=?, whatsapp=?, viber=?, adresse_personnelle=?, date_naissance=?, nin=?, doc_type=?, doc_numero=?, doc_numero_2=?, photo=?,
+         wilaya_code=?, type_code=?, niveau=?, num_ordre=?, annee=?, date_adhesion=?, description=?, paiement_mode=?, paiement_banque=?, paiement_ref=?, bureau_code=?, bureau_badge_type=?, qualite_ar=?, etoiles=?, notation_negative=?, malus=?, fonction=?, diplome=?, profession=?, carte_remise=? WHERE id=?`,
+        [matricule, text(b.nom), text(b.prenom), opt(b.nom_soc), text(b.nom_ar), text(b.prenom_ar), opt(b.telephone), opt(b.email), opt(b.whatsapp), opt(b.viber), opt(b.adresse_personnelle),opt(b.date_naissance), opt(b.nin), opt(b.doc_type, 'RC'), opt(b.doc_numero), opt(b.doc_numero_2),
+          photo, wilaya_code, type_code, niveau, num_ordre, annee, date_adhesion, description, paiement.paiement_mode, paiement.paiement_banque, paiement.paiement_ref, bureau_code, bureau_badge_type, qualite_ar, etoiles, notation_negative, notation_negative, fonction, diplome, profession, carte_remise, a.id]
+      );
+    } catch (e) {
+      if (String(e.message).includes('notation_negative') || String(e.message).includes('malus')) {
+        try {
+          await run(
+            `UPDATE adherents SET matricule=?, nom=?, prenom=?, nom_soc=?, nom_ar=?, prenom_ar=?, telephone=?, email=?, whatsapp=?, viber=?, adresse_personnelle=?, date_naissance=?, nin=?, doc_type=?, doc_numero=?, doc_numero_2=?, photo=?,
+             wilaya_code=?, type_code=?, niveau=?, num_ordre=?, annee=?, date_adhesion=?, description=?, paiement_mode=?, paiement_banque=?, paiement_ref=?, bureau_code=?, bureau_badge_type=?, qualite_ar=?, etoiles=?, fonction=?, diplome=?, profession=?, carte_remise=? WHERE id=?`,
+            [matricule, text(b.nom), text(b.prenom), opt(b.nom_soc), text(b.nom_ar), text(b.prenom_ar), opt(b.telephone), opt(b.email), opt(b.whatsapp), opt(b.viber), opt(b.adresse_personnelle),opt(b.date_naissance), opt(b.nin), opt(b.doc_type, 'RC'), opt(b.doc_numero), opt(b.doc_numero_2),
+              photo, wilaya_code, type_code, niveau, num_ordre, annee, date_adhesion, description, paiement.paiement_mode, paiement.paiement_banque, paiement.paiement_ref, bureau_code, bureau_badge_type, qualite_ar, etoiles, fonction, diplome, profession, carte_remise, a.id]
+          );
+        } catch (e2) {
+          await run(
+            `UPDATE adherents SET matricule=?, nom=?, prenom=?, nom_soc=?, nom_ar=?, prenom_ar=?, telephone=?, email=?, whatsapp=?, viber=?, adresse_personnelle=?, date_naissance=?, nin=?, doc_type=?, doc_numero=?, doc_numero_2=?, photo=?,
+             wilaya_code=?, type_code=?, niveau=?, num_ordre=?, annee=?, date_adhesion=?, description=?, paiement_mode=?, paiement_banque=?, paiement_ref=?, bureau_code=?, bureau_badge_type=?, qualite_ar=?, etoiles=?, malus=?, fonction=?, diplome=?, profession=?, carte_remise=? WHERE id=?`,
+            [matricule, text(b.nom), text(b.prenom), opt(b.nom_soc), text(b.nom_ar), text(b.prenom_ar), opt(b.telephone), opt(b.email), opt(b.whatsapp), opt(b.viber), opt(b.adresse_personnelle),opt(b.date_naissance), opt(b.nin), opt(b.doc_type, 'RC'), opt(b.doc_numero), opt(b.doc_numero_2),
+              photo, wilaya_code, type_code, niveau, num_ordre, annee, date_adhesion, description, paiement.paiement_mode, paiement.paiement_banque, paiement.paiement_ref, bureau_code, bureau_badge_type, qualite_ar, etoiles, notation_negative, fonction, diplome, profession, carte_remise, a.id]
+          );
+        }
+      } else { throw e; }
+    }
     const upd = await get('SELECT * FROM adherents WHERE id = ?', [a.id]);
     if (upd) upd.matricule = matricule;
     await logAction(req, 'EDIT_ADHERENT', `Mise à jour de l'adhérent ${b.prenom} ${b.nom} (Matricule: ${matricule})`, a.id, 'adherent');

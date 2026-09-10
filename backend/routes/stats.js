@@ -21,18 +21,48 @@ router.get('/', authenticate, authorize('admin', 'president'), async (req, res) 
     const mois = new Date().toISOString().slice(0, 7);
     const nouveauxMois = (await get("SELECT COUNT(*) AS c FROM adherents WHERE (type_code <> 'BE' OR type_code IS NULL) AND DATE_FORMAT(date_adhesion, '%Y-%m') = ?", [mois]))?.c || 0;
 
-    const starRows = await query("SELECT id, nom, prenom, matricule, etoiles FROM adherents WHERE type_code <> 'BE' OR type_code IS NULL ORDER BY etoiles ASC, prenom ASC, nom ASC");
-    const starGroups = { 0: [], 1: [], 2: [], 3: [] };
+    let starRows = [];
+    try {
+      starRows = await query("SELECT id, nom, prenom, matricule, etoiles, notation_negative, malus, profession, fonction FROM adherents WHERE type_code <> 'BE' OR type_code IS NULL ORDER BY etoiles DESC, prenom ASC, nom ASC");
+    } catch (e) {
+      try {
+        starRows = await query("SELECT id, nom, prenom, matricule, etoiles, malus, profession, fonction FROM adherents WHERE type_code <> 'BE' OR type_code IS NULL ORDER BY etoiles DESC, prenom ASC, nom ASC");
+        // map malus -> notation_negative for compat
+        starRows = starRows.map(r => ({ ...r, notation_negative: r.malus }));
+      } catch (e2) {
+        starRows = await query("SELECT id, nom, prenom, matricule, etoiles FROM adherents WHERE type_code <> 'BE' OR type_code IS NULL ORDER BY etoiles DESC, prenom ASC, nom ASC");
+        starRows = starRows.map(r => ({ ...r, notation_negative: 0, malus: 0, profession: null, fonction: null }));
+      }
+    }
+    const starGroups = { 0: [], 1: [], 2: [], 3: [], 4: [], 5: [] };
     for (const row of starRows) {
-      const s = Math.max(0, Math.min(3, Number.parseInt(row.etoiles, 10) || 0));
+      const s = Math.max(0, Math.min(5, Number.parseInt(row.etoiles, 10) || 0));
       starGroups[s].push(row);
     }
+    const notationGroups = { 0: [], 1: [], 2: [], 3: [], 4: [], 5: [] };
+    for (const row of starRows) {
+      const val = row.notation_negative ?? row.malus;
+      const m = Math.max(0, Math.min(5, Number.parseInt(val, 10) || 0));
+      notationGroups[m].push(row);
+    }
+    const malusGroups = notationGroups; // compat alias
 
     const expiringRows = await query("SELECT id, nom, prenom, matricule, date_adhesion FROM adherents WHERE (type_code <> 'BE' OR type_code IS NULL) AND date_adhesion IS NOT NULL");
     const today = new Date();
     const currentMonth = today.toISOString().slice(0, 7);
     const currentYear = String(today.getFullYear());
-    const rankingRows = await query("SELECT id, nom, prenom, matricule, etoiles, top_month_rank, top_year_rank, date_adhesion FROM adherents WHERE (type_code <> 'BE' OR type_code IS NULL)");
+    let rankingRows = [];
+    try {
+      rankingRows = await query("SELECT id, nom, prenom, matricule, etoiles, notation_negative, malus, top_month_rank, top_year_rank, date_adhesion FROM adherents WHERE (type_code <> 'BE' OR type_code IS NULL)");
+    } catch (e) {
+      try {
+        rankingRows = await query("SELECT id, nom, prenom, matricule, etoiles, malus, top_month_rank, top_year_rank, date_adhesion FROM adherents WHERE (type_code <> 'BE' OR type_code IS NULL)");
+        rankingRows = rankingRows.map(r => ({ ...r, notation_negative: r.malus }));
+      } catch (e2) {
+        rankingRows = await query("SELECT id, nom, prenom, matricule, etoiles, top_month_rank, top_year_rank, date_adhesion FROM adherents WHERE (type_code <> 'BE' OR type_code IS NULL)");
+        rankingRows = rankingRows.map(r => ({ ...r, notation_negative: 0, malus: 0 }));
+      }
+    }
     const sortRanked = (rows, rankField) => rows.sort((a, b) => {
       const ar = a[rankField] ?? Number.MAX_SAFE_INTEGER;
       const br = b[rankField] ?? Number.MAX_SAFE_INTEGER;
@@ -97,7 +127,7 @@ try {
       totalAdherents,
       totalBureauExecutif,
       adherents: { AD: typeCount('AD'), MA: typeCount('MA'), CR: typeCount('CR'), gold },
-      parWilaya, nouveauxMois, starGroups, adhesionsBientotExpirantes, meilleursMois, meilleursAnnee,
+      parWilaya, nouveauxMois, starGroups, notationGroups, malusGroups, starRows, adhesionsBientotExpirantes, meilleursMois, meilleursAnnee,
       demandes: { total: totalDemandes, ouvertes: demandesOuvertes, cloturees: demandesCloturees, tauxTraitement, parStatut: demandesParStatut },
       blacklist: { total: totalBlacklist, recent: blacklistRecent }
     });

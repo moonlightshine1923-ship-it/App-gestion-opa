@@ -63,10 +63,17 @@ export async function initSchema() {
       prenom VARCHAR(100) NOT NULL,
       nom_ar VARCHAR(100),
       prenom_ar VARCHAR(100),
+      nom_soc VARCHAR(255) DEFAULT NULL,
       telephone VARCHAR(30) UNIQUE,
+      email VARCHAR(150) DEFAULT NULL,
+      whatsapp VARCHAR(30) DEFAULT NULL,
+      viber VARCHAR(30) DEFAULT NULL,
+      adresse_personnelle VARCHAR(255) DEFAULT NULL,
+      date_naissance DATE DEFAULT NULL,
       nin VARCHAR(18) UNIQUE,
       doc_type VARCHAR(2) DEFAULT 'RC',
       doc_numero VARCHAR(20),
+      doc_numero_2 VARCHAR(20) DEFAULT NULL,
       photo VARCHAR(255),
       wilaya_code VARCHAR(5) NOT NULL DEFAULT '16',
       type_code VARCHAR(2) NOT NULL DEFAULT 'AD',
@@ -84,6 +91,11 @@ export async function initSchema() {
       bureau_badge_type VARCHAR(100),
       qualite_ar VARCHAR(100),
       etoiles TINYINT DEFAULT 0,
+      notation_negative TINYINT DEFAULT 0,
+      malus TINYINT DEFAULT 0,
+      fonction VARCHAR(150) DEFAULT NULL,
+      diplome VARCHAR(150) DEFAULT NULL,
+      profession VARCHAR(150) DEFAULT NULL,
       carte_remise TINYINT(1) DEFAULT 0,
       top_month_rank INT DEFAULT NULL,
       top_year_rank INT DEFAULT NULL,
@@ -187,7 +199,12 @@ async function ensureMigrations() {
     if (!(await hasColumn('adherents', 'nom_ar'))) await query('ALTER TABLE adherents ADD COLUMN nom_ar VARCHAR(100) AFTER prenom');
     if (!(await hasColumn('adherents', 'prenom_ar'))) await query('ALTER TABLE adherents ADD COLUMN prenom_ar VARCHAR(100) AFTER nom_ar');
     if (!(await hasColumn('adherents', 'nom_soc'))) await query('ALTER TABLE adherents ADD COLUMN nom_soc VARCHAR(255) DEFAULT NULL AFTER prenom_ar');
+    if (!(await hasColumn('adherents', 'email'))) await query('ALTER TABLE adherents ADD COLUMN email VARCHAR(150) DEFAULT NULL AFTER telephone');
+    if (!(await hasColumn('adherents', 'whatsapp'))) await query('ALTER TABLE adherents ADD COLUMN whatsapp VARCHAR(30) DEFAULT NULL AFTER email');
+    if (!(await hasColumn('adherents', 'viber'))) await query('ALTER TABLE adherents ADD COLUMN viber VARCHAR(30) DEFAULT NULL AFTER whatsapp');
+    if (!(await hasColumn('adherents', 'adresse_personnelle'))) await query('ALTER TABLE adherents ADD COLUMN adresse_personnelle VARCHAR(255) DEFAULT NULL AFTER viber');
     if (!(await hasColumn('adherents', 'date_naissance'))) await query('ALTER TABLE adherents ADD COLUMN date_naissance DATE DEFAULT NULL AFTER adresse_personnelle');
+    if (!(await hasColumn('adherents', 'doc_numero_2'))) await query('ALTER TABLE adherents ADD COLUMN doc_numero_2 VARCHAR(20) DEFAULT NULL AFTER doc_numero');
   } catch (e) { console.warn('Migration nom_ar/prenom_ar :', e.message); }
 
   try {
@@ -201,7 +218,26 @@ async function ensureMigrations() {
     if (!(await hasColumn('adherents', 'bureau_badge_type'))) await query('ALTER TABLE adherents ADD COLUMN bureau_badge_type VARCHAR(100) AFTER bureau_code');
     if (!(await hasColumn('adherents', 'qualite_ar'))) await query('ALTER TABLE adherents ADD COLUMN qualite_ar VARCHAR(100) DEFAULT NULL AFTER bureau_badge_type');
     if (!(await hasColumn('adherents', 'etoiles'))) await query('ALTER TABLE adherents ADD COLUMN etoiles TINYINT DEFAULT 0 AFTER qualite_ar');
-    if (!(await hasColumn('adherents', 'carte_remise'))) await query('ALTER TABLE adherents ADD COLUMN carte_remise TINYINT(1) DEFAULT 0 AFTER etoiles');
+    // Compatibilité: garde 'malus' et ajoute 'notation_negative' en synchro
+    if (!(await hasColumn('adherents', 'notation_negative'))) {
+      if (await hasColumn('adherents', 'malus')) {
+        try { await query('ALTER TABLE adherents ADD COLUMN notation_negative TINYINT DEFAULT 0 AFTER etoiles'); } catch(e){ console.warn('add notation_negative', e.message); }
+        try { await query('UPDATE adherents SET notation_negative = malus WHERE notation_negative IS NULL OR notation_negative = 0'); } catch(e){}
+      } else {
+        await query('ALTER TABLE adherents ADD COLUMN notation_negative TINYINT DEFAULT 0 AFTER etoiles');
+      }
+    }
+    if (!(await hasColumn('adherents', 'malus'))) {
+      try { await query('ALTER TABLE adherents ADD COLUMN malus TINYINT DEFAULT 0 AFTER notation_negative'); } catch(e){}
+      try { await query('UPDATE adherents SET malus = notation_negative WHERE malus IS NULL'); } catch(e){}
+    }
+    // synchro au démarrage
+    try { await query('UPDATE adherents SET notation_negative = malus WHERE (notation_negative IS NULL OR notation_negative != malus) AND malus IS NOT NULL'); } catch(e){}
+    try { await query('UPDATE adherents SET malus = notation_negative WHERE (malus IS NULL OR malus != notation_negative) AND notation_negative IS NOT NULL'); } catch(e){}
+    if (!(await hasColumn('adherents', 'fonction'))) await query('ALTER TABLE adherents ADD COLUMN fonction VARCHAR(150) DEFAULT NULL AFTER malus');
+    if (!(await hasColumn('adherents', 'diplome'))) await query('ALTER TABLE adherents ADD COLUMN diplome VARCHAR(150) DEFAULT NULL AFTER fonction');
+    if (!(await hasColumn('adherents', 'profession'))) await query('ALTER TABLE adherents ADD COLUMN profession VARCHAR(150) DEFAULT NULL AFTER diplome');
+    if (!(await hasColumn('adherents', 'carte_remise'))) await query('ALTER TABLE adherents ADD COLUMN carte_remise TINYINT(1) DEFAULT 0 AFTER profession');
     if (!(await hasColumn('adherents', 'top_month_rank'))) await query('ALTER TABLE adherents ADD COLUMN top_month_rank INT DEFAULT NULL AFTER carte_remise');
     if (!(await hasColumn('adherents', 'top_year_rank'))) await query('ALTER TABLE adherents ADD COLUMN top_year_rank INT DEFAULT NULL AFTER top_month_rank');
   } catch (e) { console.warn('Migration colonnes adhérents étendues :', e.message); }
