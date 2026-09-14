@@ -746,7 +746,7 @@ return `<div class="stat-card" style="--kpi-color:${color}">
     t.innerHTML = `<div class="table-wrap"><table class="data">
       <thead><tr>
         <th width="40"><input type="checkbox" id="selectAllAdh" /></th>
-        <th>Matricule</th>
+        <th width="50">Photo</th>
         <th>Nom & Prénom</th>
         <th>${isBureau ? 'Badge spécial' : 'Téléphone'}</th>
         <th>${isBureau ? 'Type badge' : 'Wilaya'}</th>
@@ -761,12 +761,15 @@ return `<div class="stat-card" style="--kpi-color:${color}">
         const expiryHtml = expiry
           ? `<div style="font-weight:600;color:${expiry.isExpired ? '#dc2626' : expiry.isSoon ? '#d97706' : 'var(--text)'}">${esc(expiry.expirationText)}</div><div class="muted" style="font-size:11px">${expiry.isExpired ? 'Expirée' : expiry.isSoon ? `Expire dans ${expiry.daysLeft} jour${expiry.daysLeft > 1 ? 's' : ''}` : 'Valide'}</div>`
           : '<span class="muted">—</span>';
+        const photoHtml = a.photo
+          ? `<img src="/uploads/${esc(a.photo)}" style="width:42px;height:42px;border-radius:10px;object-fit:cover;border:1px solid var(--border-strong);" />`
+          : `<div class="profile-photo-ph" style="width:42px;height:42px;border-radius:10px;font-size:16px;font-weight:700;display:flex;align-items:center;justify-content:center;background:var(--gold-grad);color:#fff;">${esc((a.prenom || a.nom || 'A')[0].toUpperCase())}</div>`;
         const cvBadge = (a.profession || a.fonction || a.diplome || a.nom_soc) ? `<div style="margin-top:3px"><span class="tag" style="background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;font-size:10px;padding:2px 6px">📄 ${esc((a.profession || a.fonction || '').slice(0,18) || a.nom_soc?.slice(0,18) || 'CV')}</span></div>` : '';
-        const nameCell = `<div class="cell-strong">${esc((a.nom || '').trim() || '—')} ${esc((a.prenom || '').trim() || '')}</div>${a.nom_soc ? `<div style="font-size:11px;color:var(--muted)">${esc(a.nom_soc)}</div>` : ''}${cvBadge}`;
+        const nameCell = `<div class="cell-strong">${esc((a.nom || '').trim() || '—')} ${esc((a.prenom || '').trim() || '')}</div><div class="mono" style="font-size:11.5px;color:var(--gold-2);margin-top:2px;">${esc(a.matricule || '—')}</div>${a.nom_soc ? `<div style="font-size:11px;color:var(--muted)">${esc(a.nom_soc)}</div>` : ''}${cvBadge}`;
         const paiementHtml = a.paiement_mode === 'non_assujetti' ? '<span class="tag" style="background:#f0ead8;color:#8a6e18">⊘ Non assujetti</span>' : a.paiement_mode ? '<span class="tag tag-actif">✓ Oui</span>' : '<span class="tag tag-inactif">✕ Non</span>';
         return `<tr>
         <td><input type="checkbox" class="adh-checkbox" value="${a.id}" /></td>
-        <td><span class="mono" style="font-weight:bold; color:var(--gold); font-size:13px;">${esc(a.matricule || '—')}</span></td>
+        <td>${photoHtml}</td>
         <td>${nameCell}</td>
         <td>${isBureau ? specialBadge() : esc(a.telephone || '—')}</td>
         <td>${isBureau ? esc(a.bureau_badge_type || '—') : esc(a.wilaya_nom || '—')}</td>
@@ -3654,14 +3657,14 @@ async function documentsList() {
               </div>
 
               <div id="adhSearchBox" style="${initialAdh ? 'display:none;' : ''}">
-                <input type="search" id="adhInputSearch" placeholder="Nom, prénom ou matricule" autocomplete="off" />
+                <input type="search" id="adhInputSearch" placeholder="Commencez à taper le nom, prénom ou matricule…" autocomplete="off" />
                 <div id="adhSearchResults" style="max-height:220px;overflow-y:auto;border:1px solid var(--border-strong);border-radius:10px;margin-top:6px;background:var(--panel);display:none;box-shadow:var(--shadow);"></div>
               </div>
             </div>
 
             <div class="field full">
               <label>Titre / Libellé du service *</label>
-              <input name="titre" required  value="${esc(serviceToEdit?.titre || '')}" />
+              <input name="titre" required placeholder="Ex. Accompagnement dossier douanier, Attestation d'affiliation, Conseil fiscal…" value="${esc(serviceToEdit?.titre || '')}" />
             </div>
 
             <div class="field">
@@ -3678,7 +3681,7 @@ async function documentsList() {
 
             <div class="field full">
               <label>Description / Détails du service rendu</label>
-              <textarea name="description" rows="3" >${esc(serviceToEdit?.description || '')}</textarea>
+              <textarea name="description" rows="3" placeholder="Renseignez les détails du service rendu, les pièces délivrées, la suite à donner…">${esc(serviceToEdit?.description || '')}</textarea>
             </div>
           </div>
 
