@@ -152,6 +152,27 @@ export async function initSchema() {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
 
+  // Table SERVICES ADHERENTS
+  await query(`
+    CREATE TABLE IF NOT EXISTS services_adherents (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      adherent_id INT NOT NULL,
+      titre VARCHAR(200) NOT NULL,
+      type_service VARCHAR(100) DEFAULT 'Administratif',
+      description TEXT,
+      statut VARCHAR(40) DEFAULT 'Effectué',
+      date_service DATE NOT NULL,
+      montant DECIMAL(15,2) DEFAULT 0.00,
+      created_by INT DEFAULT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      CONSTRAINT fk_service_adherent FOREIGN KEY (adherent_id) REFERENCES adherents(id) ON DELETE CASCADE,
+      CONSTRAINT fk_service_user FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+      INDEX idx_service_adherent (adherent_id),
+      INDEX idx_service_date (date_service)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
   // Table BLACKLIST
   await query(`
     CREATE TABLE IF NOT EXISTS blacklist (

@@ -129,6 +129,17 @@ const API = (() => {
     },
     createFinanceAdherent: (data) => request('POST', '/finances/adherents-rapides', data),
 
+    // --- SERVICES ADHÉRENTS ---
+    services: (params = {}) => {
+      const q = new URLSearchParams(params).toString();
+      return request('GET', '/services' + (q ? '?' + q : ''));
+    },
+    servicesStats: () => request('GET', '/services/stats'),
+    servicesAdherent: (adherentId) => request('GET', '/services/adherent/' + adherentId),
+    createService: (data) => request('POST', '/services', data),
+    updateService: (id, data) => request('PATCH', '/services/' + id, data),
+    deleteService: (id) => request('DELETE', '/services/' + id),
+
     // Renvoie un blob URL authentifié pour un fichier protégé
     fileUrl: async (relPath) => {
       const res = await fetch('/uploads/' + relPath, {

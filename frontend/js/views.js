@@ -2637,7 +2637,8 @@ async function documentsList() {
       const labels = {
         paiement_employe: 'Paiement employé', loyer: 'Loyer', charges: 'Charges',
         fournitures: 'Fournitures', deplacement: 'Déplacement',
-        commission_tva: 'Commissions et TVA', commission: 'Commission', tva: 'TVA', ebanking: 'ebanking', autre: 'Autre',
+        commission_tva: 'Commissions et TVA', commission: 'Commission', tva: 'TVA',
+        ebanking: 'ebanking', frais_application: "Frais d'application", autre: 'Autre',
       };
       return `<span class="tag tag-inactif">${esc(labels[nature] || nature)}</span>`;
     }
@@ -3005,7 +3006,7 @@ async function documentsList() {
 
     async function renderSorties(body) {
       const list = await API.financesMouvements({ sens: 'sortie' });
-      const causesManuelles = (meta.motifsSortie || []).filter((m) => !['ebanking', 'commission', 'tva', 'commission_tva'].includes(m.code));
+      const causesManuelles = (meta.motifsSortie || []).filter((m) => !['ebanking', 'frais_application', 'commission', 'tva', 'commission_tva'].includes(m.code));
       body.innerHTML = `
         <div class="panel" style="margin-bottom:18px">
           <div class="panel-head"><h3>Nouvelle sortie</h3></div>
@@ -3030,7 +3031,7 @@ async function documentsList() {
                 <input type="date" name="date_mouvement" value="${esc(new Date().toISOString().slice(0, 10))}" />
               </div>
               <div class="field" id="outCommTvaWrap" style="display:none">
-                <label>Commissions et TVA (BDL)</label>
+                <label id="outCommTvaLabel">Commissions et TVA</label>
                 <input type="number" name="commission_tva" id="outCommTva" min="0" step="0.01" placeholder="0.00" />
               </div>
               <div class="field full">
@@ -3042,7 +3043,7 @@ async function documentsList() {
                 <input name="observation" />
               </div>
             </div>
-            <p class="muted" style="margin-top:8px">Frais ebanking : 2 000 DA le 31 de chaque mois, débités du BDL.</p>
+            <p class="muted" style="margin-top:8px"><b>Frais mensuels automatiques :</b> Frais ebanking BDL (2 000 DA) et Frais d’application CPA (1 071 DA) réduits automatiquement à chaque fin de mois (28, 29, 30 ou 31).</p>
             <div class="form-error" id="outErr"></div>
             <div class="modal-foot" style="margin-top:8px">
               <button type="submit" class="btn btn-gold">Enregistrer la sortie</button>
@@ -3055,10 +3056,15 @@ async function documentsList() {
         </div>
       `;
       function toggleCommTva() {
-        const isBdl = String($('#outCompte')?.value || '').toUpperCase() === 'BDL';
+        const code = String($('#outCompte')?.value || '').toUpperCase();
+        const isBdlOrCpa = code === 'BDL' || code === 'CPA';
         const wrap = $('#outCommTvaWrap');
-        if (wrap) wrap.style.display = isBdl ? '' : 'none';
-        if (!isBdl && $('#outCommTva')) $('#outCommTva').value = '';
+        const label = $('#outCommTvaLabel');
+        if (wrap) wrap.style.display = isBdlOrCpa ? '' : 'none';
+        if (label) {
+          label.textContent = code === 'CPA' ? 'TVA (CPA)' : 'Commissions et TVA (BDL)';
+        }
+        if (!isBdlOrCpa && $('#outCommTva')) $('#outCommTva').value = '';
       }
       $('#outCompte').onchange = toggleCommTva;
       toggleCommTva();
@@ -3068,7 +3074,7 @@ async function documentsList() {
         const f = e.target;
         const compteCode = String(f.compte_code.value || '').toUpperCase();
         const montant = Number(f.montant.value);
-        const commTva = compteCode === 'BDL' ? Number(f.commission_tva.value) : 0;
+        const commTva = (compteCode === 'BDL' || compteCode === 'CPA') ? Number(f.commission_tva.value) : 0;
         if (!(montant > 0) && !(commTva > 0)) {
           $('#outErr').textContent = 'Indiquez un montant, ou commissions et TVA.';
           return;
@@ -3087,12 +3093,12 @@ async function documentsList() {
           }
           if (commTva > 0) {
             await API.createFinanceMouvement({
-              compte_code: 'BDL',
+              compte_code: compteCode,
               sens: 'sortie',
               nature: 'commission_tva',
               montant: commTva,
               date_mouvement: f.date_mouvement.value,
-              motif: 'Commissions et TVA',
+              motif: compteCode === 'CPA' ? 'TVA (CPA)' : 'Commissions et TVA',
               observation: f.observation.value,
             });
           }
@@ -3240,5 +3246,576 @@ async function documentsList() {
     await renderTab();
   }
 
-  return { setRef, setRole, setPermissions, dashboard, adherentsList, bureauExecutifList, demandesList, documentsList, parametres, saisieAjout, comptesList, blacklistList, auditList, showAuditDetail, finances };
+  /* ============ SERVICES AUX ADHÉRENTS ============ */
+
+  function serviceTypeTag(type) {
+    return `<span class="tag tag-type">${esc(type || 'Général')}</span>`;
+  }
+
+  async function servicesAdherents() {
+    const c = container();
+    c.innerHTML = '<div class="muted">Chargement de la rubrique Services…</div>';
+
+    let currentTab = 'adherents'; // 'adherents' | 'services'
+    let stats = null;
+    let allAdherents = [];
+    let allServices = [];
+    let adherentServicesMap = {};
+
+    async function loadData() {
+      try {
+        const [statsData, adhRes, servicesData] = await Promise.all([
+          API.servicesStats(),
+          API.adherents({ limit: 1000 }),
+          API.services()
+        ]);
+        stats = statsData;
+        allAdherents = Array.isArray(adhRes) ? adhRes : (adhRes.rows || adhRes.data || []);
+        allServices = Array.isArray(servicesData) ? servicesData : [];
+
+        adherentServicesMap = {};
+        for (const s of allServices) {
+          if (!adherentServicesMap[s.adherent_id]) {
+            adherentServicesMap[s.adherent_id] = [];
+          }
+          adherentServicesMap[s.adherent_id].push(s);
+        }
+      } catch (err) {
+        toast(err.message, 'error');
+      }
+    }
+
+    await loadData();
+
+    function renderMain() {
+      c.innerHTML = `
+        <style>
+          .kpi-row-small {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 16px;
+            margin-bottom: 22px;
+          }
+          .kpi-small {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px 20px;
+            position: relative;
+            overflow: hidden;
+            box-shadow: var(--shadow);
+            transition: box-shadow 0.2s;
+          }
+          .kpi-small:hover { box-shadow: 0 4px 18px rgba(0,0,0,0.06); }
+          .kpi-small-accent {
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 4px;
+            border-radius: 4px 0 0 4px;
+          }
+          .kpi-small .kpi-ico {
+            width: 38px;
+            height: 38px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            margin-bottom: 10px;
+          }
+          .kpi-small .kpi-val {
+            font-size: 26px;
+            font-weight: 800;
+            color: var(--text);
+            line-height: 1;
+          }
+          .kpi-small .kpi-lbl {
+            font-size: 12.5px;
+            color: var(--text-mute);
+            margin-top: 6px;
+            font-weight: 600;
+          }
+          .kpi-small .kpi-sub {
+            font-size: 11px;
+            color: var(--text-mute);
+            margin-top: 3px;
+          }
+        </style>
+
+        <div class="kpi-row-small">
+          <div class="kpi-small">
+            <div class="kpi-small-accent" style="background:#c49b2e"></div>
+            <div class="kpi-ico" style="background:rgba(196,155,46,0.12);color:#c49b2e">🛠️</div>
+            <div class="kpi-val">${stats?.total || 0}</div>
+            <div class="kpi-lbl">Total services rendus</div>
+            <div class="kpi-sub">${stats?.total_adherents || 0} adhérent(s) bénéficiaire(s)</div>
+          </div>
+
+          <div class="kpi-small">
+            <div class="kpi-small-accent" style="background:#257a48"></div>
+            <div class="kpi-ico" style="background:rgba(37,122,72,0.12);color:#257a48">👥</div>
+            <div class="kpi-val">${stats?.total_adherents || 0}</div>
+            <div class="kpi-lbl">Adhérents servis</div>
+            <div class="kpi-sub">Adhérents uniques</div>
+          </div>
+        </div>
+
+        <div class="panel" style="margin-bottom:18px">
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+            <div style="display:flex;gap:10px">
+              <button class="btn ${currentTab === 'adherents' ? 'btn-gold' : 'btn-dark'}" id="srvTabAdherents">👥 Par Adhérent</button>
+              <button class="btn ${currentTab === 'services' ? 'btn-gold' : 'btn-dark'}" id="srvTabServices">📋 Tous les Services (${allServices.length})</button>
+            </div>
+            <button class="btn btn-gold" id="srvAddBtn">+ Ajouter un service</button>
+          </div>
+        </div>
+
+        <div id="srvBody"></div>
+      `;
+
+      c.querySelector('#srvTabAdherents').onclick = () => { currentTab = 'adherents'; renderMain(); };
+      c.querySelector('#srvTabServices').onclick = () => { currentTab = 'services'; renderMain(); };
+      c.querySelector('#srvAddBtn').onclick = () => openServiceModal();
+
+      const body = c.querySelector('#srvBody');
+      if (currentTab === 'adherents') {
+        renderAdherentsTab(body);
+      } else {
+        renderServicesTab(body);
+      }
+    }
+
+    function renderAdherentsTab(body) {
+      body.innerHTML = `
+        <div class="toolbar" style="margin-bottom:16px">
+          <input type="search" id="adhSrvSearch" placeholder="Rechercher un adhérent (nom, prénom, matricule, wilaya)…" />
+          <span class="muted" id="adhSrvCount">${allAdherents.length} adhérent(s)</span>
+        </div>
+        <div id="adhSrvList" style="display:flex;flex-direction:column;gap:14px"></div>
+      `;
+
+      const listEl = body.querySelector('#adhSrvList');
+      const searchInput = body.querySelector('#adhSrvSearch');
+
+      function filterAndDraw() {
+        const q = String(searchInput.value || '').toLowerCase().trim();
+        const filtered = allAdherents.filter((a) => {
+          if (!q) return true;
+          return (
+            (a.nom || '').toLowerCase().includes(q) ||
+            (a.prenom || '').toLowerCase().includes(q) ||
+            (a.matricule || '').toLowerCase().includes(q) ||
+            (a.wilaya_code || '').includes(q) ||
+            (a.niveau || '').toLowerCase().includes(q)
+          );
+        });
+
+        body.querySelector('#adhSrvCount').textContent = `${filtered.length} adhérent(s)`;
+
+        if (!filtered.length) {
+          listEl.innerHTML = `<div class="empty"><div class="empty-ico">🔍</div><p>Aucun adhérent trouvé.</p></div>`;
+          return;
+        }
+
+        listEl.innerHTML = filtered.map((a) => {
+          const services = adherentServicesMap[a.id] || [];
+          const photoHtml = a.photo
+            ? `<img src="/uploads/${esc(a.photo)}" class="profile-photo" style="width:48px;height:48px;border-radius:10px;" />`
+            : `<div class="profile-photo-ph" style="width:48px;height:48px;border-radius:10px;font-size:18px;">${esc((a.prenom || 'A')[0].toUpperCase())}</div>`;
+
+          return `
+            <div class="panel" style="margin-bottom:0;padding:16px 20px" data-adh-card="${a.id}">
+              <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+                <div style="display:flex;align-items:center;gap:14px">
+                  ${photoHtml}
+                  <div>
+                    <div style="font-size:15px;font-weight:700;color:var(--text)">${esc(a.nom)} ${esc(a.prenom)}</div>
+                    <div class="muted" style="font-size:12.5px;margin-top:2px">
+                      Matricule : <span class="mono">${esc(a.matricule || '—')}</span> ·
+                      ${esc(a.niveau || 'Adhérent')} ·
+                      Wilaya : <b>${esc(a.wilaya_code || '16')}</b>
+                    </div>
+                  </div>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px">
+                  <span class="tag ${services.length ? 'tag-actif' : 'tag-normale'}">${services.length} service(s) rendu(s)</span>
+                  <button class="btn btn-gold btn-sm" data-add-service="${a.id}">+ Ajouter service</button>
+                  <button class="btn btn-ghost btn-sm" data-toggle-services="${a.id}">${services.length ? '▼ Voir historique' : 'Détails'}</button>
+                </div>
+              </div>
+
+              <div id="adhServicesWrap-${a.id}" style="display:none;margin-top:16px;padding-top:14px;border-top:1px dashed var(--border)">
+                <div style="font-weight:700;font-size:13.5px;color:var(--gold-2);margin-bottom:10px">
+                  📋 Services rendus à ${esc(a.prenom)} ${esc(a.nom)} :
+                </div>
+                ${!services.length ? `
+                  <div class="muted" style="font-size:13px;padding:8px 0">Aucun service enregistré pour le moment. Cliquez sur "+ Ajouter service" pour en créer un.</div>
+                ` : `
+                  <div class="table-wrap" style="margin-bottom:0">
+                    <table class="data" style="font-size:13px">
+                      <thead>
+                        <tr>
+                          <th>Date</th>
+                          <th>Titre du service</th>
+                          <th>Type</th>
+                          <th>Description</th>
+                          <th style="width:100px">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        ${services.map((s) => `
+                          <tr>
+                            <td class="mono">${esc(fmtDate(s.date_service))}</td>
+                            <td class="cell-strong">${esc(s.titre)}</td>
+                            <td>${serviceTypeTag(s.type_service)}</td>
+                            <td>${esc(s.description || '—')}</td>
+                            <td>
+                              <div class="row-actions">
+                                <button class="btn btn-ghost btn-sm" data-edit-srv="${s.id}">✏️</button>
+                                <button class="btn btn-danger btn-sm" data-del-srv="${s.id}">🗑️</button>
+                              </div>
+                            </td>
+                          </tr>
+                        `).join('')}
+                      </tbody>
+                    </table>
+                  </div>
+                `}
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        listEl.querySelectorAll('[data-add-service]').forEach((btn) => {
+          btn.onclick = () => openServiceModal(parseInt(btn.dataset.addService, 10));
+        });
+
+        listEl.querySelectorAll('[data-toggle-services]').forEach((btn) => {
+          btn.onclick = () => {
+            const adhId = btn.dataset.toggleServices;
+            const wrap = listEl.querySelector(`#adhServicesWrap-${adhId}`);
+            if (wrap) {
+              const isHidden = wrap.style.display === 'none';
+              wrap.style.display = isHidden ? 'block' : 'none';
+              btn.textContent = isHidden ? '▲ Masquer' : (adherentServicesMap[adhId]?.length ? '▼ Voir historique' : 'Détails');
+            }
+          };
+        });
+
+        listEl.querySelectorAll('[data-edit-srv]').forEach((btn) => {
+          btn.onclick = () => {
+            const srvId = parseInt(btn.dataset.editSrv, 10);
+            const srv = allServices.find((s) => s.id === srvId);
+            if (srv) openServiceModal(srv.adherent_id, srv);
+          };
+        });
+
+        listEl.querySelectorAll('[data-del-srv]').forEach((btn) => {
+          btn.onclick = () => deleteServiceConfirm(parseInt(btn.dataset.delSrv, 10));
+        });
+      }
+
+      searchInput.oninput = filterAndDraw;
+      filterAndDraw();
+    }
+
+    function renderServicesTab(body) {
+      const types = stats?.types || [];
+
+      body.innerHTML = `
+        <div class="toolbar">
+          <input type="search" id="srvGlobalSearch" placeholder="Rechercher (adhérent, titre, description)…" />
+          <select id="srvTypeFilter">
+            <option value="">Tous les types de service</option>
+            ${types.map((t) => `<option value="${esc(t)}">${esc(t)}</option>`).join('')}
+          </select>
+          <span class="muted" id="srvGlobalCount">${allServices.length} service(s)</span>
+        </div>
+
+        <div class="panel" style="padding:0">
+          <div class="table-wrap">
+            <table class="data">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Adhérent</th>
+                  <th>Titre du service</th>
+                  <th>Type</th>
+                  <th>Agent / Créateur</th>
+                  <th style="width:110px">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="srvGlobalTbody"></tbody>
+            </table>
+          </div>
+        </div>
+      `;
+
+      const tbody = body.querySelector('#srvGlobalTbody');
+      const searchInput = body.querySelector('#srvGlobalSearch');
+      const typeSelect = body.querySelector('#srvTypeFilter');
+
+      function filterAndDrawGlobal() {
+        const q = String(searchInput.value || '').toLowerCase().trim();
+        const selectedType = typeSelect.value;
+
+        const filtered = allServices.filter((s) => {
+          if (selectedType && s.type_service !== selectedType) return false;
+          if (!q) return true;
+
+          const adhName = `${s.adherent_nom || ''} ${s.adherent_prenom || ''}`.toLowerCase();
+          const mat = (s.adherent_matricule || '').toLowerCase();
+          const titre = (s.titre || '').toLowerCase();
+          const desc = (s.description || '').toLowerCase();
+
+          return adhName.includes(q) || mat.includes(q) || titre.includes(q) || desc.includes(q);
+        });
+
+        body.querySelector('#srvGlobalCount').textContent = `${filtered.length} service(s)`;
+
+        if (!filtered.length) {
+          tbody.innerHTML = `<tr><td colspan="7" class="empty">Aucun service ne correspond à la recherche.</td></tr>`;
+          return;
+        }
+
+        tbody.innerHTML = filtered.map((s) => `
+          <tr>
+            <td class="mono">${esc(fmtDate(s.date_service))}</td>
+            <td>
+              <div class="cell-strong">${esc(s.adherent_nom)} ${esc(s.adherent_prenom)}</div>
+              <div class="mono" style="font-size:11.5px">${esc(s.adherent_matricule || '—')}</div>
+            </td>
+            <td class="cell-strong">${esc(s.titre)}</td>
+            <td>${serviceTypeTag(s.type_service)}</td>
+            <td class="muted" style="font-size:12px">${esc(s.created_by_email || '—')}</td>
+            <td>
+              <div class="row-actions">
+                <button class="btn btn-ghost btn-sm" data-edit-srv-g="${s.id}">✏️ Éditer</button>
+                <button class="btn btn-danger btn-sm" data-del-srv-g="${s.id}">🗑️</button>
+              </div>
+            </td>
+          </tr>
+        `).join('');
+
+        tbody.querySelectorAll('[data-edit-srv-g]').forEach((btn) => {
+          btn.onclick = () => {
+            const srvId = parseInt(btn.dataset.editSrvG, 10);
+            const srv = allServices.find((s) => s.id === srvId);
+            if (srv) openServiceModal(srv.adherent_id, srv);
+          };
+        });
+
+        tbody.querySelectorAll('[data-del-srv-g]').forEach((btn) => {
+          btn.onclick = () => deleteServiceConfirm(parseInt(btn.dataset.delSrvG, 10));
+        });
+      }
+
+      searchInput.oninput = filterAndDrawGlobal;
+      typeSelect.onchange = filterAndDrawGlobal;
+
+      filterAndDrawGlobal();
+    }
+
+    function openServiceModal(defaultAdherentId = null, serviceToEdit = null) {
+      const isEdit = !!serviceToEdit;
+      const types = stats?.types || [
+        'Accompagnement / Conseil',
+        'Attestation / Document',
+        'Assistance administrative',
+        'Formation / Atelier',
+        'Événement / Networking',
+        'Médiation / Contentieux',
+        'Autre service'
+      ];
+
+      const titleText = isEdit ? 'Modifier le service' : 'Ajouter un service rendu à un adhérent';
+
+      // Determine initial selected adherent
+      const initialAdhId = serviceToEdit?.adherent_id || defaultAdherentId;
+      const initialAdh = initialAdhId ? allAdherents.find((a) => a.id === initialAdhId) : null;
+
+      openModal(titleText, `
+        <form id="serviceForm">
+          <div class="form-grid">
+            <div class="field full">
+              <label>Adhérent bénéficiaire *</label>
+              <input type="hidden" name="adherent_id" id="selectedAdherentId" value="${initialAdh ? initialAdh.id : ''}" required />
+
+              <div id="adhSelectedBox" style="${initialAdh ? '' : 'display:none;'}margin-bottom:8px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--panel-2);border:1px solid var(--gold);border-radius:10px;">
+                  <div>
+                    <strong id="selectedAdhName" style="color:var(--text);font-size:14px;">${initialAdh ? esc(initialAdh.nom) + ' ' + esc(initialAdh.prenom) : ''}</strong>
+                    <span class="mono" id="selectedAdhMat" style="margin-left:10px;font-size:12px;">${initialAdh ? esc(initialAdh.matricule || '') : ''}</span>
+                  </div>
+                  ${isEdit ? '' : `<button type="button" class="btn btn-ghost btn-sm" id="btnChangeAdherent">Changer</button>`}
+                </div>
+              </div>
+
+              <div id="adhSearchBox" style="${initialAdh ? 'display:none;' : ''}">
+                <input type="search" id="adhInputSearch" placeholder="Nom, prénom ou matricule" autocomplete="off" />
+                <div id="adhSearchResults" style="max-height:220px;overflow-y:auto;border:1px solid var(--border-strong);border-radius:10px;margin-top:6px;background:var(--panel);display:none;box-shadow:var(--shadow);"></div>
+              </div>
+            </div>
+
+            <div class="field full">
+              <label>Titre / Libellé du service *</label>
+              <input name="titre" required  value="${esc(serviceToEdit?.titre || '')}" />
+            </div>
+
+            <div class="field">
+              <label>Type de service *</label>
+              <select name="type_service">
+                ${types.map((t) => `<option value="${esc(t)}" ${(serviceToEdit?.type_service || 'Accompagnement / Conseil') === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}
+              </select>
+            </div>
+
+            <div class="field">
+              <label>Date du service *</label>
+              <input type="date" name="date_service" value="${esc(serviceToEdit ? fmtDate(serviceToEdit.date_service) : new Date().toISOString().slice(0, 10))}" required />
+            </div>
+
+            <div class="field full">
+              <label>Description / Détails du service rendu</label>
+              <textarea name="description" rows="3" >${esc(serviceToEdit?.description || '')}</textarea>
+            </div>
+          </div>
+
+          <div class="form-error" id="serviceErr"></div>
+
+          <div class="modal-foot">
+            <button type="button" class="btn btn-ghost" onclick="UI.closeModal()">Annuler</button>
+            <button type="submit" class="btn btn-gold">${isEdit ? 'Enregistrer les modifications' : 'Créer le service'}</button>
+          </div>
+        </form>
+      `);
+
+      // Bind search behavior
+      const input = $('#adhInputSearch');
+      const results = $('#adhSearchResults');
+      const hiddenId = $('#selectedAdherentId');
+      const selectedBox = $('#adhSelectedBox');
+      const searchBox = $('#adhSearchBox');
+      const selectedName = $('#selectedAdhName');
+      const selectedMat = $('#selectedAdhMat');
+      const btnChange = $('#btnChangeAdherent');
+
+      if (btnChange) {
+        btnChange.onclick = () => {
+          hiddenId.value = '';
+          selectedBox.style.display = 'none';
+          searchBox.style.display = 'block';
+          if (input) {
+            input.value = '';
+            input.focus();
+          }
+        };
+      }
+
+      if (input) {
+        input.oninput = () => {
+          const query = input.value.toLowerCase().trim();
+          if (!query) {
+            results.style.display = 'none';
+            results.innerHTML = '';
+            return;
+          }
+          const matches = allAdherents.filter((a) => {
+            return (
+              (a.nom || '').toLowerCase().includes(query) ||
+              (a.prenom || '').toLowerCase().includes(query) ||
+              (a.matricule || '').toLowerCase().includes(query)
+            );
+          }).slice(0, 15);
+
+          if (!matches.length) {
+            results.style.display = 'block';
+            results.innerHTML = `<div class="muted" style="padding:12px;text-align:center;">Aucun adhérent trouvé.</div>`;
+            return;
+          }
+
+          results.style.display = 'block';
+          results.innerHTML = matches.map((a) => `
+            <div class="adh-search-item" data-id="${a.id}" style="padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer;display:flex;align-items:center;justify-content:space-between;">
+              <div>
+                <strong style="color:var(--text);">${esc(a.nom)} ${esc(a.prenom)}</strong>
+                <span class="muted" style="font-size:12px;margin-left:8px;">Wilaya ${esc(a.wilaya_code || '16')}</span>
+              </div>
+              <span class="mono" style="font-size:12px;">${esc(a.matricule || 'Sans mat.')}</span>
+            </div>
+          `).join('');
+
+          results.querySelectorAll('.adh-search-item').forEach((item) => {
+            item.onmouseenter = () => item.style.background = 'var(--panel-2)';
+            item.onmouseleave = () => item.style.background = 'transparent';
+            item.onclick = () => {
+              const adhId = parseInt(item.dataset.id, 10);
+              const adh = allAdherents.find((a) => a.id === adhId);
+              if (adh) {
+                hiddenId.value = adh.id;
+                selectedName.textContent = `${adh.nom} ${adh.prenom}`;
+                selectedMat.textContent = adh.matricule || '';
+                results.style.display = 'none';
+                searchBox.style.display = 'none';
+                selectedBox.style.display = 'block';
+              }
+            };
+          });
+        };
+      }
+
+      const form = $('#serviceForm');
+      form.onsubmit = async (e) => {
+        e.preventDefault();
+        $('#serviceErr').textContent = '';
+        const f = e.target;
+
+        const adhIdVal = parseInt(hiddenId.value, 10);
+        if (!adhIdVal) {
+          $('#serviceErr').textContent = 'Veuillez rechercher et sélectionner un adhérent.';
+          return;
+        }
+
+        const payload = {
+          adherent_id: adhIdVal,
+          titre: f.titre.value,
+          type_service: f.type_service.value,
+          date_service: f.date_service.value,
+          description: f.description.value,
+        };
+
+        try {
+          if (isEdit) {
+            await API.updateService(serviceToEdit.id, payload);
+            toast('Service mis à jour avec succès.');
+          } else {
+            await API.createService(payload);
+            toast('Nouveau service enregistré avec succès.');
+          }
+          closeModal();
+          await loadData();
+          renderMain();
+        } catch (err) {
+          $('#serviceErr').textContent = err.message;
+        }
+      };
+    }
+
+    async function deleteServiceConfirm(id) {
+      if (!confirm('Voulez-vous vraiment supprimer cet enregistrement de service ?')) return;
+      try {
+        await API.deleteService(id);
+        toast('Service supprimé.');
+        await loadData();
+        renderMain();
+      } catch (err) {
+        toast(err.message, 'error');
+      }
+    }
+
+    renderMain();
+  }
+
+  return { setRef, setRole, setPermissions, dashboard, adherentsList, bureauExecutifList, demandesList, documentsList, parametres, saisieAjout, comptesList, blacklistList, auditList, showAuditDetail, finances, servicesAdherents };
 })();

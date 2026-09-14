@@ -14,7 +14,7 @@ export const COMPTES = [
 const COMPTE_CODES = COMPTES.map((c) => c.code);
 const SENS = ['entree', 'sortie'];
 const NATURES_ENTREE = ['cheque', 'espece', 'virement', 'autre'];
-const NATURES_SORTIE = ['paiement_employe', 'loyer', 'charges', 'fournitures', 'deplacement', 'commission_tva', 'commission', 'tva', 'ebanking', 'autre'];
+const NATURES_SORTIE = ['paiement_employe', 'loyer', 'charges', 'fournitures', 'deplacement', 'commission_tva', 'commission', 'tva', 'ebanking', 'frais_application', 'autre'];
 const MOTIFS_SORTIE = [
   { code: 'paiement_employe', label: 'Paiement employé' },
   { code: 'loyer', label: 'Loyer' },
@@ -25,9 +25,11 @@ const MOTIFS_SORTIE = [
   { code: 'commission', label: 'Commission' },
   { code: 'tva', label: 'TVA' },
   { code: 'ebanking', label: 'ebanking' },
+  { code: 'frais_application', label: "Frais d'application" },
   { code: 'autre', label: 'Autre' },
 ];
 const EBANKING_MONTANT = 2000;
+const CPA_FRAIS_APP_MONTANT = 1071;
 
 function num(v) {
   const n = Number(v);
@@ -93,6 +95,62 @@ export async function ensureFinanceSchema() {
     } else {
       await run('UPDATE finance_comptes SET label = ? WHERE code = ?', [c.label, c.code]);
     }
+  }
+
+  await ensureMonthlyFees();
+}
+
+export async function ensureMonthlyFees() {
+  try {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
+    const todayStr = now.toISOString().slice(0, 10);
+
+    const startYear = 2026;
+
+    for (let y = startYear; y <= currentYear; y++) {
+      const endM = (y === currentYear) ? currentMonth : 11;
+      for (let m = 0; m <= endM; m++) {
+        const lastDayObj = new Date(Date.UTC(y, m + 1, 0));
+        const year = lastDayObj.getUTCFullYear();
+        const month = String(lastDayObj.getUTCMonth() + 1).padStart(2, '0');
+        const day = String(lastDayObj.getUTCDate()).padStart(2, '0');
+        const dateStr = `${year}-${month}-${day}`;
+
+        if (dateStr > todayStr) {
+          continue;
+        }
+
+        // CPA Frais d'application (1071 DA chaque fin de mois)
+        const existingCpa = await get(
+          `SELECT id FROM finance_mouvements WHERE compte_code = 'CPA' AND nature = 'frais_application' AND date_mouvement = ?`,
+          [dateStr]
+        );
+        if (!existingCpa) {
+          await run(
+            `INSERT INTO finance_mouvements (compte_code, sens, nature, montant, date_mouvement, motif, observation)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            ['CPA', 'sortie', 'frais_application', CPA_FRAIS_APP_MONTANT, dateStr, "Frais d'application (fin de mois)", 'Déduction automatique fin de mois (1 071 DA)']
+          );
+        }
+
+        // BDL Frais ebanking (2000 DA chaque fin de mois)
+        const existingBdl = await get(
+          `SELECT id FROM finance_mouvements WHERE compte_code = 'BDL' AND nature = 'ebanking' AND date_mouvement = ?`,
+          [dateStr]
+        );
+        if (!existingBdl) {
+          await run(
+            `INSERT INTO finance_mouvements (compte_code, sens, nature, montant, date_mouvement, motif, observation)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            ['BDL', 'sortie', 'ebanking', EBANKING_MONTANT, dateStr, 'Frais ebanking (fin de mois)', 'Déduction automatique fin de mois (2 000 DA)']
+          );
+        }
+      }
+    }
+  } catch (e) {
+    console.error('Erreur lors de la vérification des frais mensuels :', e.message);
   }
 }
 
