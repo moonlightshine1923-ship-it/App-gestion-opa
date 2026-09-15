@@ -85,6 +85,16 @@ export async function ensureFinanceSchema() {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
 
+  await query(`
+    CREATE TABLE IF NOT EXISTS finance_frais_mensuels_log (
+      compte_code VARCHAR(20) NOT NULL,
+      nature VARCHAR(40) NOT NULL,
+      mois VARCHAR(7) NOT NULL,
+      generated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (compte_code, nature, mois)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
   for (const c of COMPTES) {
     const exists = await get('SELECT code FROM finance_comptes WHERE code = ?', [c.code]);
     if (!exists) {
@@ -114,38 +124,66 @@ export async function ensureMonthlyFees() {
       for (let m = 0; m <= endM; m++) {
         const lastDayObj = new Date(Date.UTC(y, m + 1, 0));
         const year = lastDayObj.getUTCFullYear();
-        const month = String(lastDayObj.getUTCMonth() + 1).padStart(2, '0');
-        const day = String(lastDayObj.getUTCDate()).padStart(2, '0');
-        const dateStr = `${year}-${month}-${day}`;
+        const monthNum = lastDayObj.getUTCMonth() + 1;
+        const monthStr = String(monthNum).padStart(2, '0');
+        const dayStr = String(lastDayObj.getUTCDate()).padStart(2, '0');
+        const dateStr = `${year}-${monthStr}-${dayStr}`;
+        const moisKey = `${year}-${monthStr}`;
 
         if (dateStr > todayStr) {
           continue;
         }
 
         // CPA Frais d'application (1071 DA chaque fin de mois)
-        const existingCpa = await get(
-          `SELECT id FROM finance_mouvements WHERE compte_code = 'CPA' AND nature = 'frais_application' AND date_mouvement = ?`,
-          [dateStr]
+        const logCpa = await get(
+          `SELECT mois FROM finance_frais_mensuels_log WHERE compte_code = 'CPA' AND nature = 'frais_application' AND mois = ?`,
+          [moisKey]
         );
-        if (!existingCpa) {
+
+        if (!logCpa) {
           await run(
-            `INSERT INTO finance_mouvements (compte_code, sens, nature, montant, date_mouvement, motif, observation)
-             VALUES (?, ?, ?, ?, ?, ?, ?)`,
-            ['CPA', 'sortie', 'frais_application', CPA_FRAIS_APP_MONTANT, dateStr, "Frais d'application (fin de mois)", 'Déduction automatique fin de mois (1 071 DA)']
+            `INSERT IGNORE INTO finance_frais_mensuels_log (compte_code, nature, mois) VALUES ('CPA', 'frais_application', ?)`,
+            [moisKey]
           );
+
+          const existingCpa = await get(
+            `SELECT id FROM finance_mouvements WHERE compte_code = 'CPA' AND nature = 'frais_application' AND date_mouvement = ?`,
+            [dateStr]
+          );
+
+          if (!existingCpa) {
+            await run(
+              `INSERT INTO finance_mouvements (compte_code, sens, nature, montant, date_mouvement, motif, observation)
+               VALUES (?, ?, ?, ?, ?, ?, ?)`,
+              ['CPA', 'sortie', 'frais_application', CPA_FRAIS_APP_MONTANT, dateStr, "Frais d'application (fin de mois)", 'Déduction automatique fin de mois (1 071 DA)']
+            );
+          }
         }
 
         // BDL Frais ebanking (2000 DA chaque fin de mois)
-        const existingBdl = await get(
-          `SELECT id FROM finance_mouvements WHERE compte_code = 'BDL' AND nature = 'ebanking' AND date_mouvement = ?`,
-          [dateStr]
+        const logBdl = await get(
+          `SELECT mois FROM finance_frais_mensuels_log WHERE compte_code = 'BDL' AND nature = 'ebanking' AND mois = ?`,
+          [moisKey]
         );
-        if (!existingBdl) {
+
+        if (!logBdl) {
           await run(
-            `INSERT INTO finance_mouvements (compte_code, sens, nature, montant, date_mouvement, motif, observation)
-             VALUES (?, ?, ?, ?, ?, ?, ?)`,
-            ['BDL', 'sortie', 'ebanking', EBANKING_MONTANT, dateStr, 'Frais ebanking (fin de mois)', 'Déduction automatique fin de mois (2 000 DA)']
+            `INSERT IGNORE INTO finance_frais_mensuels_log (compte_code, nature, mois) VALUES ('BDL', 'ebanking', ?)`,
+            [moisKey]
           );
+
+          const existingBdl = await get(
+            `SELECT id FROM finance_mouvements WHERE compte_code = 'BDL' AND nature = 'ebanking' AND date_mouvement = ?`,
+            [dateStr]
+          );
+
+          if (!existingBdl) {
+            await run(
+              `INSERT INTO finance_mouvements (compte_code, sens, nature, montant, date_mouvement, motif, observation)
+               VALUES (?, ?, ?, ?, ?, ?, ?)`,
+              ['BDL', 'sortie', 'ebanking', EBANKING_MONTANT, dateStr, 'Frais ebanking (fin de mois)', 'Déduction automatique fin de mois (2 000 DA)']
+            );
+          }
         }
       }
     }
