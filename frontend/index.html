@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OPA — Organisation du Patronat Algérien</title>
+  <link rel="icon" type="image/png" href="assets/logo.png" />
+  <link rel="stylesheet" href="css/style.css?v=20260922c" />
+</head>
+<body>
+  <!-- ÉCRAN DE CONNEXION -->
+  <div id="loginScreen" class="login-screen">
+    <div class="login-bg"></div>
+    <div class="login-card">
+      <img src="assets/logo.png" alt="OPA" class="login-logo" />
+      <h1>OPA</h1>
+      <p class="login-sub">Organisation du Patronat Algérien</p>
+      <p class="login-tag">Plateforme de gestion des adhérents</p>
+      <form id="loginForm">
+        <div class="field">
+          <label>Adresse email</label>
+          <input type="email" id="loginEmail" placeholder="exemple@opa.dz" required />
+        </div>
+        <div class="field">
+          <label>Mot de passe</label>
+          <div class="password-wrap">
+            <input type="password" id="loginPassword" placeholder="••••••••" required />
+            <button type="button" id="togglePassword" class="password-toggle" aria-label="Afficher le mot de passe" title="Afficher le mot de passe">
+              <svg class="eye-open" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+              <svg class="eye-closed" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+            </button>
+          </div>
+        </div>
+        <div id="loginError" class="form-error"></div>
+        <button type="submit" class="btn btn-gold btn-block">Se connecter</button>
+      </form>
+      <p class="login-tag" style="margin-top:18px">Accès réservé à l'administration et à la présidence.</p>
+    </div>
+  </div>
+
+  <!-- APPLICATION -->
+  <div id="app" class="app hidden">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-brand">
+        <img src="assets/logo.png" alt="OPA" />
+        <div>
+          <strong>OPA</strong>
+          <small>Organisation du patronat Algérien</small>
+        </div>
+      </div>
+      <nav id="navMenu" class="sidebar-nav"></nav>
+      <div class="sidebar-foot">
+        <div class="user-pill">
+          <div class="user-avatar" id="userAvatar">U</div>
+          <div class="user-meta">
+            <strong id="userName">Utilisateur</strong>
+            <small id="userRole">—</small>
+          </div>
+        </div>
+        <button id="logoutBtn" class="btn btn-ghost btn-sm btn-block">Déconnexion</button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <button id="menuToggle" class="icon-btn" aria-label="menu">☰</button>
+        <h2 id="pageTitle">Tableau de bord</h2>
+        <div class="topbar-right">
+          <span class="badge-role" id="topRole">—</span>
+        </div>
+      </header>
+      <div id="viewContainer" class="view-container"></div>
+    </main>
+    
+  </div>
+
+  <!-- MODALE GÉNÉRIQUE -->
+  <div id="modal" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-head">
+        <h3 id="modalTitle">Titre</h3>
+        <button id="modalClose" class="icon-btn">✕</button>
+      </div>
+      <div id="modalBody" class="modal-body"></div>
+    </div>
+  </div>
+
+  <!-- NOTIFICATIONS -->
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="js/api.js?v=20260922c"></script>
+  <script src="js/ui.js?v=20260922c"></script>
+  <script src="js/charts.js?v=20260922c"></script>
+  <script src="js/views.js?v=20260922c"></script>
+  <script src="js/app.js?v=20260922c"></script>
+<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a3f171a61e05c9f9',t:'MTc5MDA4MTUxNg=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>
