@@ -99,4 +99,25 @@ router.post('/suppression-groupes', authenticate, authorize('admin', 'president'
   }
 });
 
+// 4. Suppression d'un seul document par son id (complète API.deleteDocument).
+// ✅ Ajouté le 22/09/2026 : la route n'existait pas → l'appel tombait sur
+// la page d'accueil (200 + HTML) au lieu d'une réponse JSON.
+router.delete('/:id', authenticate, authorize('admin', 'president'), async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return res.status(400).json({ error: 'Identifiant invalide.' });
+    const doc = await get('SELECT * FROM documents WHERE id = ?', [id]);
+    if (!doc) return res.status(404).json({ error: 'Document introuvable.' });
+    if (doc.filename && fs.existsSync(doc.filename)) {
+      try { fs.unlinkSync(doc.filename); } catch {}
+    }
+    const del = await run('DELETE FROM documents WHERE id = ?', [id]);
+    if (del && del.affectedRows === 0) return res.status(404).json({ error: 'Document introuvable.' });
+    await logAction(req, 'DELETE_DOCUMENT', `Suppression du document #${id} (${doc.original_name || doc.filename || ''})`, id, 'document');
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 export default router;

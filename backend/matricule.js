@@ -1,22 +1,4 @@
 import { get } from './db.js';
-
-/* ═══════════════════════════════════════════════════════════════════
-   NUMÉROTATION DES MATRICULES :
-   ─────────────────────────────
-   Format : AGN19 + Wilaya(2) + N°(3) + TYPE + Année(4)
-
-   CR  → compteur NATIONAL (que les CR)
-   MA  → compteur NATIONAL (que les MA)
-   AD  → compteur par WILAYA (Gold + Simple ensemble, pas les MA/CR)
-   BE  → pas de num_ordre (code bureau à la place)
-
-   Exemples :
-   CR Tizi 001, CR Alger 002              (national)
-   MA Tizi 001, MA Alger 002              (national)
-   AD Gold Alger 001, AD Simple Alger 002 (par wilaya, Gold+Simple ensemble)
-   AD Gold Tizi 001, AD Simple Tizi 002   (par wilaya, Gold+Simple ensemble)
-   ═══════════════════════════════════════════════════════════════════ */
-
 const PREFIX = 'AGN19';
 
 function cleanWilaya(code) {

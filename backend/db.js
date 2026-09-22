@@ -16,15 +16,54 @@ const config = {
 let pool;
 
 export async function connect() {
-  const root = await mysql.createConnection({
-    host: config.host, port: config.port, user: config.user, password: config.password,
-  });
-  await root.query(
-    `CREATE DATABASE IF NOT EXISTS \`${config.database}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`
-  );
-  await root.end();
+  // ── Étape 1 : essayer de créer la base si elle n'existe pas ──
+  // En local (root XAMPP) : autorisé, la base opa_db se crée toute seule.
+  // Sur cPanel : l'utilisateur MySQL n'a PAS le droit CREATE DATABASE
+  // (la base se crée via cPanel > Bases de données MySQL). Dans ce cas
+  // on affiche un avertissement et on continue : la base existe déjà.
+  try {
+    const root = await mysql.createConnection({
+      host: config.host, port: config.port, user: config.user, password: config.password,
+    });
+    try {
+      await root.query(
+        `CREATE DATABASE IF NOT EXISTS \`${config.database}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`
+      );
+    } finally {
+      await root.end();
+    }
+  } catch (e) {
+    const msg = String(e.message || '');
+    const code = String(e.code || '');
+    if (code.includes('ACCESS_DENIED') || code.includes('DBACCESS') || msg.includes('Access denied')) {
+      console.warn(`⚠️  CREATE DATABASE impossible avec l'utilisateur '${config.user}' (normal sur cPanel).`);
+      console.warn(`    → On suppose que la base '${config.database}' existe déjà (créée via cPanel).`);
+    } else {
+      throw e; // vraie erreur de connexion (host/user/mdp faux, MySQL arrêté…) → on la remonte
+    }
+  }
+
+  // ── Étape 2 : pool de connexions vers la base cible ──
   pool = mysql.createPool(config);
+
+  // ── Étape 3 : test immédiat (échec rapide avec message clair) ──
+  const conn = await pool.getConnection();
+  try {
+    await conn.ping();
+  } finally {
+    conn.release();
+  }
   return pool;
+}
+
+// Infos de connexion SANS le mot de passe (pour /api/health et les logs)
+export function getDbInfo() {
+  return {
+    host: config.host,
+    port: config.port,
+    user: config.user,
+    database: config.database,
+  };
 }
 
 export function getPool() {

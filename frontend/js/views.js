@@ -2626,7 +2626,7 @@ async function documentsList() {
 
   function fmtDA(v) {
     const n = Number(v) || 0;
-    return n.toLocaleString('fr-DZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' DA';
+    return n.toLocaleString('fr-DZ', { minimumFractionDigits: 2, maximumFractionDigits: 5 }) + ' DA';
   }
 
   function compteTag(code) {
@@ -2774,7 +2774,7 @@ async function documentsList() {
               <div class="fin-solde">${fmtDA(acc.solde)}</div>
               <div class="field" style="margin-top:12px">
                 <label>Montant initial (DA)</label>
-                <input type="number" name="montant_initial" min="0" step="0.01" value="${esc(acc.montant_initial)}" />
+                <input type="number" name="montant_initial" min="0" step="0.00001" value="${esc(acc.montant_initial)}" />
               </div>
               <div class="field">
                 <label>Observation</label>
@@ -2830,7 +2830,7 @@ async function documentsList() {
               </div>
               <div class="field">
                 <label>Montant (DA) *</label>
-                <input type="number" name="montant" min="0.01" step="0.01" required placeholder="0.00" />
+                <input type="number" name="montant" min="0.01" step="0.00001" required placeholder="0.00" />
               </div>
               <div class="field" id="encChequeWrap">
                 <label>N° de chèque</label>
@@ -3027,7 +3027,7 @@ async function documentsList() {
               </div>
               <div class="field">
                 <label>Montant (DA)</label>
-                <input type="number" name="montant" min="0" step="0.01" placeholder="0.00" />
+                <input type="number" name="montant" min="0" step="0.00001" placeholder="0.00" />
               </div>
               <div class="field">
                 <label>Date</label>
@@ -3035,7 +3035,7 @@ async function documentsList() {
               </div>
               <div class="field" id="outCommTvaWrap" style="display:none">
                 <label id="outCommTvaLabel">Commissions et TVA</label>
-                <input type="number" name="commission_tva" id="outCommTva" min="0" step="0.01" placeholder="0.00" />
+                <input type="number" name="commission_tva" id="outCommTva" min="0" step="0.00001" placeholder="0.00" />
               </div>
               <div class="field full">
                 <label>Détail / bénéficiaire</label>
@@ -3212,7 +3212,7 @@ async function documentsList() {
             <div class="field"><label>Nature / cause</label>
               <select name="nature">${natures.map((n) => `<option value="${esc(n.code)}" ${n.code === m.nature ? 'selected' : ''}>${esc(n.label)}</option>`).join('')}</select>
             </div>
-            <div class="field"><label>Montant (DA)</label><input type="number" name="montant" min="0.01" step="0.01" value="${esc(m.montant)}" required /></div>
+            <div class="field"><label>Montant (DA)</label><input type="number" name="montant" min="0.01" step="0.00001" value="${esc(m.montant)}" required /></div>
             <div class="field"><label>Date</label><input type="date" name="date_mouvement" value="${esc(fmtDate(m.date_mouvement))}" /></div>
             <div class="field"><label>N° chèque</label><input name="cheque_numero" value="${esc(m.cheque_numero || '')}" maxlength="7" /></div>
             <div class="field"><label>Détail</label><input name="motif" value="${esc(m.motif || '')}" /></div>

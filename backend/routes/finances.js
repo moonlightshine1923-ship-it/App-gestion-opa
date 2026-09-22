@@ -31,12 +31,29 @@ const MOTIFS_SORTIE = [
 const EBANKING_MONTANT = 2000;
 const CPA_FRAIS_APP_MONTANT = 1071;
 
+// ✅ 22/09/2026 : accepte « 117226,34 » (virgule FR), « 117 226,34 » (espaces),
+// « 117.226,34 » (européen) et « 117,226.34 » (anglo-saxon).
+function toNumber(v) {
+  if (typeof v === 'number') return v;
+  let s = String(v ?? '').trim().replace(/[\s\u00A0\u202F]/g, '');
+  if (s === '') return NaN;
+  if (s.includes(',')) {
+    if (s.includes('.')) {
+      if (s.lastIndexOf(',') > s.lastIndexOf('.')) s = s.replace(/\./g, '').replace(',', '.');
+      else s = s.replace(/,/g, '');
+    } else {
+      s = s.replace(',', '.');
+    }
+  }
+  return Number(s);
+}
 function num(v) {
-  const n = Number(v);
+  const n = toNumber(v);
   return Number.isFinite(n) ? n : 0;
 }
-function round2(v) {
-  return Math.round(num(v) * 100) / 100;
+// Montants arrondis à 5 décimales (colonnes DECIMAL(15,5)).
+function round5(v) {
+  return Math.round(num(v) * 100000) / 100000;
 }
 function today() {
   return new Date().toISOString().slice(0, 10);
@@ -55,7 +72,7 @@ export async function ensureFinanceSchema() {
     CREATE TABLE IF NOT EXISTS finance_comptes (
       code VARCHAR(20) PRIMARY KEY,
       label VARCHAR(120) NOT NULL,
-      montant_initial DECIMAL(15,2) NOT NULL DEFAULT 0,
+      montant_initial DECIMAL(15,5) NOT NULL DEFAULT 0,
       observation TEXT,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
@@ -67,7 +84,7 @@ export async function ensureFinanceSchema() {
       compte_code VARCHAR(20) NOT NULL,
       sens ENUM('entree','sortie') NOT NULL,
       nature VARCHAR(40) NOT NULL,
-      montant DECIMAL(15,2) NOT NULL,
+      montant DECIMAL(15,5) NOT NULL,
       date_mouvement DATE NOT NULL,
       adherent_id INT DEFAULT NULL,
       cheque_numero VARCHAR(20) DEFAULT NULL,
@@ -94,6 +111,24 @@ export async function ensureFinanceSchema() {
       PRIMARY KEY (compte_code, nature, mois)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
+
+  // ✅ 22/09/2026 : élargit les montants à 5 décimales sur les bases existantes.
+  // DECIMAL(15,2) -> DECIMAL(15,5) = sans perte (données conservées).
+  for (const [table, column, ddl] of [
+    ['finance_comptes', 'montant_initial', 'DECIMAL(15,5) NOT NULL DEFAULT 0'],
+    ['finance_mouvements', 'montant', 'DECIMAL(15,5) NOT NULL'],
+  ]) {
+    try {
+      const cols = await query(`SHOW COLUMNS FROM \`${table}\` LIKE '${column}'`);
+      const type = String(cols[0]?.Type || '').toLowerCase().replace(/\s+/g, '');
+      if (type.startsWith('decimal') && type !== 'decimal(15,5)') {
+        await query(`ALTER TABLE \`${table}\` MODIFY COLUMN \`${column}\` ${ddl}`);
+        console.log(`  \u2705 ${table}.${column} \u2192 ${ddl}`);
+      }
+    } catch (e) {
+      console.warn(`Migration d\u00e9cimales ${table}.${column} :`, e.message);
+    }
+  }
 
   for (const c of COMPTES) {
     const exists = await get('SELECT code FROM finance_comptes WHERE code = ?', [c.code]);
@@ -207,9 +242,9 @@ async function getComptesWithSoldes() {
   const byCode = Object.fromEntries(agg.map((r) => [r.compte_code, r]));
   return comptes.map((c) => {
     const a = byCode[c.code] || {};
-    const initial = round2(c.montant_initial);
-    const entrees = round2(a.entrees);
-    const sorties = round2(a.sorties);
+    const initial = round5(c.montant_initial);
+    const entrees = round5(a.entrees);
+    const sorties = round5(a.sorties);
     return {
       code: c.code,
       label: c.label,
@@ -217,10 +252,10 @@ async function getComptesWithSoldes() {
       montant_initial: initial,
       entrees,
       sorties,
-      virements: round2(a.virements),
-      cheques: round2(a.cheques),
-      especes: round2(a.especes),
-      solde: round2(initial + entrees - sorties),
+      virements: round5(a.virements),
+      cheques: round5(a.cheques),
+      especes: round5(a.especes),
+      solde: round5(initial + entrees - sorties),
       updated_at: c.updated_at,
     };
   });
@@ -247,7 +282,7 @@ function parseMouvementBody(body = {}, { partial = false } = {}) {
   }
 
   if (!partial || body.montant !== undefined) {
-    const montant = round2(body.montant);
+    const montant = round5(body.montant);
     if (!(montant > 0)) errors.push('Le montant doit être supérieur à 0.');
     else out.montant = montant;
   }
@@ -334,11 +369,11 @@ router.get('/dashboard', authenticate, authorize('admin', 'president'), async (r
       bdl: bdl.solde,
       cpa: cpa.solde,
       caisse: caisse.solde,
-      banques: round2(bdl.solde + cpa.solde),
-      general: round2(bdl.solde + cpa.solde + caisse.solde),
+      banques: round5(bdl.solde + cpa.solde),
+      general: round5(bdl.solde + cpa.solde + caisse.solde),
       virementsBdl: bdl.virements || 0,
       virementsCpa: cpa.virements || 0,
-      virementsBanques: round2((bdl.virements || 0) + (cpa.virements || 0)),
+      virementsBanques: round5((bdl.virements || 0) + (cpa.virements || 0)),
     };
     const counts = await get(`
       SELECT
@@ -371,25 +406,29 @@ router.get('/comptes', authenticate, authorize('admin', 'president'), async (req
   }
 });
 
-router.patch('/comptes/:code', authenticate, authorize('admin', 'president'), async (req, res) => {
+async function handleUpdateCompte(req, res, codeRaw, bodyObj) {
   try {
     await ensureFinanceSchema();
-    const code = String(req.params.code || '').toUpperCase();
+    const code = String(codeRaw || '').toUpperCase();
     if (!COMPTE_CODES.includes(code)) return res.status(400).json({ error: 'Compte invalide.' });
     const existing = await get('SELECT * FROM finance_comptes WHERE code = ?', [code]);
     if (!existing) return res.status(404).json({ error: 'Compte introuvable.' });
 
     const updates = [];
     const params = [];
-    if (req.body.montant_initial !== undefined) {
-      const v = round2(req.body.montant_initial);
+    if (bodyObj.montant_initial !== undefined) {
+      const rawStr = String(bodyObj.montant_initial ?? '').trim();
+      if (rawStr !== '' && !Number.isFinite(toNumber(bodyObj.montant_initial))) {
+        return res.status(400).json({ error: 'Montant initial invalide (ex : 117226,34).' });
+      }
+      const v = round5(bodyObj.montant_initial);
       if (v < 0) return res.status(400).json({ error: 'Le montant initial ne peut pas être négatif.' });
       updates.push('montant_initial = ?');
       params.push(v);
     }
-    if (req.body.observation !== undefined) {
+    if (bodyObj.observation !== undefined) {
       updates.push('observation = ?');
-      params.push(String(req.body.observation || '').trim() || null);
+      params.push(String(bodyObj.observation || '').trim() || null);
     }
     if (!updates.length) return res.status(400).json({ error: 'Aucune modification.' });
     params.push(code);
@@ -398,9 +437,20 @@ router.patch('/comptes/:code', authenticate, authorize('admin', 'president'), as
     const comptes = await getComptesWithSoldes();
     res.json(comptes.find((c) => c.code === code));
   } catch (e) {
+    console.error('FINANCE update compte :', e.message);
     res.status(500).json({ error: e.message });
   }
-});
+}
+
+router.patch('/comptes/:code', authenticate, authorize('admin', 'president'), (req, res) =>
+  handleUpdateCompte(req, res, req.params.code, req.body)
+);
+
+// ✅ SECOURS POST (22/09/2026) — PATCH parfois intercepté par le pare-feu
+// de l'hébergeur (erreur « HTML reçu au lieu de JSON »). Même effet en POST.
+router.post('/comptes/update', authenticate, authorize('admin', 'president'), (req, res) =>
+  handleUpdateCompte(req, res, req.body?.code, req.body || {})
+);
 
 router.get('/adherents-payes', authenticate, authorize('admin', 'president'), async (req, res) => {
   try {
@@ -435,7 +485,7 @@ router.get('/adherents-payes', authenticate, authorize('admin', 'president'), as
     res.json(rows.map((r) => ({
       ...r,
       n_encaissements: num(r.n_encaissements),
-      total_encaisse: round2(r.total_encaisse),
+      total_encaisse: round5(r.total_encaisse),
     })));
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -517,21 +567,28 @@ router.post('/mouvements', authenticate, authorize('admin', 'president'), async 
         data.adherent_id || null, data.cheque_numero, data.motif, data.observation, req.user.id,
       ]
     );
+    if (!r || !r.insertId) {
+      console.error('FINANCE POST : INSERT sans insertId — vérifiez la table finance_mouvements.');
+      return res.status(500).json({ error: 'Écriture impossible dans finance_mouvements (insertId manquant).' });
+    }
     const desc = `${data.sens === 'entree' ? 'Entrée' : 'Sortie'} ${labelNature(data.sens, data.nature)} de ${data.montant} DA sur ${labelCompte(data.compte_code)}`;
     await logAction(req, data.sens === 'entree' ? 'FINANCE_ENTREE' : 'FINANCE_SORTIE', desc, r.insertId, 'finance');
     const row = await get(`${SELECT_MOUV} WHERE m.id = ?`, [r.insertId]);
     res.status(201).json(row);
   } catch (e) {
+    console.error('FINANCE POST /mouvements :', e.message);
     res.status(500).json({ error: e.message });
   }
 });
 
-router.patch('/mouvements/:id', authenticate, authorize('admin', 'president'), async (req, res) => {
+async function handleUpdateMouvement(req, res, idRaw, bodyObj) {
   try {
-    const id = parseInt(req.params.id, 10);
+    await ensureFinanceSchema();
+    const id = parseInt(idRaw, 10);
+    if (!Number.isFinite(id)) return res.status(400).json({ error: 'Identifiant invalide.' });
     const existing = await get('SELECT * FROM finance_mouvements WHERE id = ?', [id]);
     if (!existing) return res.status(404).json({ error: 'Mouvement introuvable.' });
-    const { errors, data } = parseMouvementBody({ ...existing, ...req.body }, { partial: true });
+    const { errors, data } = parseMouvementBody({ ...existing, ...bodyObj }, { partial: true });
     if (errors.length) return res.status(400).json({ error: errors.join(' ') });
     const merged = { ...existing, ...data };
     if (merged.sens === 'entree' && !NATURES_ENTREE.includes(merged.nature)) {
@@ -540,33 +597,64 @@ router.patch('/mouvements/:id', authenticate, authorize('admin', 'president'), a
     if (merged.sens === 'sortie' && !NATURES_SORTIE.includes(merged.nature)) {
       return res.status(400).json({ error: 'Cause de sortie invalide.' });
     }
-    await run(
+    const upd = await run(
       `UPDATE finance_mouvements SET
         compte_code=?, sens=?, nature=?, montant=?, date_mouvement=?, adherent_id=?, cheque_numero=?, motif=?, observation=?
        WHERE id=?`,
       [
-        merged.compte_code, merged.sens, merged.nature, round2(merged.montant), String(merged.date_mouvement).slice(0, 10),
+        merged.compte_code, merged.sens, merged.nature, round5(merged.montant), String(merged.date_mouvement).slice(0, 10),
         merged.adherent_id || null, merged.cheque_numero || null, merged.motif || null, merged.observation || null, id,
       ]
     );
+    if (upd && upd.affectedRows === 0) {
+      return res.status(404).json({ error: 'Mouvement introuvable (aucune ligne modifiée).' });
+    }
     await logAction(req, 'EDIT_FINANCE_MOUVEMENT', `Modification du mouvement #${id}`, id, 'finance');
     res.json(await get(`${SELECT_MOUV} WHERE m.id = ?`, [id]));
   } catch (e) {
+    console.error('FINANCE update mouvement :', e.message);
     res.status(500).json({ error: e.message });
   }
-});
+}
 
-router.delete('/mouvements/:id', authenticate, authorize('admin', 'president'), async (req, res) => {
+router.patch('/mouvements/:id', authenticate, authorize('admin', 'president'), (req, res) =>
+  handleUpdateMouvement(req, res, req.params.id, req.body)
+);
+
+// ✅ SECOURS POST (22/09/2026) — certains hébergeurs interceptent PATCH/DELETE
+// et renvoient la page d'accueil (200 + HTML) au lieu d'appeler l'API.
+// Ces routes font EXACTEMENT la même chose, mais en POST (jamais bloqué)
+// et sans id dans l'URL (id dans le corps JSON).
+router.post('/mouvements/update', authenticate, authorize('admin', 'president'), (req, res) =>
+  handleUpdateMouvement(req, res, req.body?.id, req.body || {})
+);
+
+async function handleDeleteMouvement(req, res, idRaw) {
   try {
-    const id = parseInt(req.params.id, 10);
+    await ensureFinanceSchema();
+    const id = parseInt(idRaw, 10);
+    if (!Number.isFinite(id)) return res.status(400).json({ error: 'Identifiant invalide.' });
     const existing = await get('SELECT * FROM finance_mouvements WHERE id = ?', [id]);
     if (!existing) return res.status(404).json({ error: 'Mouvement introuvable.' });
-    await run('DELETE FROM finance_mouvements WHERE id = ?', [id]);
+    const del = await run('DELETE FROM finance_mouvements WHERE id = ?', [id]);
+    if (del && del.affectedRows === 0) {
+      return res.status(404).json({ error: 'Mouvement introuvable (aucune ligne supprimée).' });
+    }
     await logAction(req, 'DELETE_FINANCE_MOUVEMENT', `Suppression du mouvement #${id} (${existing.sens} ${existing.montant} DA)`, id, 'finance');
     res.json({ ok: true });
   } catch (e) {
+    console.error('FINANCE delete mouvement :', e.message);
     res.status(500).json({ error: e.message });
   }
-});
+}
+
+router.delete('/mouvements/:id', authenticate, authorize('admin', 'president'), (req, res) =>
+  handleDeleteMouvement(req, res, req.params.id)
+);
+
+// ✅ SECOURS POST (22/09/2026) : suppression via POST + { id } dans le corps.
+router.post('/mouvements/delete', authenticate, authorize('admin', 'president'), (req, res) =>
+  handleDeleteMouvement(req, res, req.body?.id)
+);
 
 export default router;

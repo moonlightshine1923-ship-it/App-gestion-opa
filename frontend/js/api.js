@@ -10,6 +10,16 @@ const API = (() => {
     const headers = {};
     const token = getToken();
     if (token) headers['Authorization'] = 'Bearer ' + token;
+    // ✅ 22/09/2026 (fix global pare-feu) : certains hébergeurs interceptent
+    // PUT/PATCH/DELETE et renvoient la page d'accueil (200 + HTML) au lieu
+    // d'appeler l'API. On envoie donc POST + en-tête de surcharge, et
+    // server.js restaure la vraie méthode avant le routage. Même effet,
+    // mêmes routes backend, zéro blocage — pour TOUS les modules.
+    let wireMethod = method;
+    if (method === 'PUT' || method === 'PATCH' || method === 'DELETE') {
+      wireMethod = 'POST';
+      headers['X-OPA-Method'] = method;
+    }
     let payload;
     if (isForm) {
       payload = body; // FormData
@@ -17,7 +27,7 @@ const API = (() => {
       headers['Content-Type'] = 'application/json';
       payload = JSON.stringify(body);
     }
-    const res = await fetch('/api' + url, { method, headers, body: payload });
+    const res = await fetch('/api' + url, { method: wireMethod, headers, body: payload });
     if (res.status === 401 && !url.includes('/auth/login')) {
       clearToken();
       window.location.reload();
@@ -30,7 +40,10 @@ const API = (() => {
       return data;
     }
     if (!res.ok) throw new Error('Erreur serveur.');
-    return res;
+    // ✅ 22/09/2026 : succès HTTP mais réponse NON-JSON (ex : pare-feu/proxy
+    // ayant renvoyé une page HTML au lieu d'appeler l'API) → ne JAMAIS
+    // traiter comme un succès, sinon faux toast vert « supprimé/modifié ».
+    throw new Error('Réponse serveur invalide (HTML reçu au lieu de JSON).');
   }
 
   return {
@@ -115,14 +128,16 @@ const API = (() => {
     financesDashboard: () => request('GET', '/finances/dashboard'),
     financesMeta: () => request('GET', '/finances/meta'),
     financesComptes: () => request('GET', '/finances/comptes'),
-    updateFinanceCompte: (code, data) => request('PATCH', '/finances/comptes/' + encodeURIComponent(code), data),
+    updateFinanceCompte: (code, data) => request('POST', '/finances/comptes/update', { code, ...data }),
     financesMouvements: (params = {}) => {
       const q = new URLSearchParams(params).toString();
       return request('GET', '/finances/mouvements' + (q ? '?' + q : ''));
     },
     createFinanceMouvement: (data) => request('POST', '/finances/mouvements', data),
-    updateFinanceMouvement: (id, data) => request('PATCH', '/finances/mouvements/' + id, data),
-    deleteFinanceMouvement: (id) => request('DELETE', '/finances/mouvements/' + id),
+    // ✅ 22/09/2026 : routes de secours en POST (PATCH/DELETE parfois
+    // interceptés par le pare-feu de l'hébergeur). Même effet garanti.
+    updateFinanceMouvement: (id, data) => request('POST', '/finances/mouvements/update', { id, ...data }),
+    deleteFinanceMouvement: (id) => request('POST', '/finances/mouvements/delete', { id }),
     financesAdherentsPayes: (params = {}) => {
       const q = new URLSearchParams(params).toString();
       return request('GET', '/finances/adherents-payes' + (q ? '?' + q : ''));

@@ -1,17 +1,38 @@
-// ============================================================
-//  CONFIGURATION OPA — à éditer selon votre environnement
-// ============================================================
-// Astuce : les variables d'environnement (process.env...) ont la priorité.
-// Sinon, modifiez directement les valeurs ci-dessous.
+import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// ── Charger .env depuis la racine du projet (avant tout) ──
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const ROOT = path.join(__dirname, '..');
+dotenv.config({ path: path.join(ROOT, '.env') });
+
+// Nettoie une valeur (espaces parasites = erreur de connexion assurée)
+function cleanStr(v, fallback = '') {
+  const s = String(v ?? '').trim();
+  return s === '' ? fallback : s;
+}
 
 export const CONFIG = {
-  // ---------- Base de données MySQL (XAMPP) ----------
+  // ---------- Base de données MySQL ----------
+  // 👉 EN LOCAL (XAMPP) : laissez les défauts (root / sans mot de passe / opa_db)
+  //    ou créez un fichier .env à la racine (voir .env.example).
+  // 👉 SUR CPANEL : NE modifiez PAS ce fichier à chaque déploiement.
+  //    Créez plutôt le fichier .env sur cPanel avec :
+  //      DB_HOST=localhost
+  //      DB_PORT=3306
+  //      DB_USER=cpaneluser_nomuser   (avec le préfixe cPanel !)
+  //      DB_PASSWORD=le_vrai_mot_de_passe
+  //      DB_NAME=cpaneluser_opa_db    (avec le préfixe cPanel !)
   db: {
-    host: process.env.DB_HOST || '127.0.0.1',
-    port: parseInt(process.env.DB_PORT || '3306', 10),
-    user: process.env.DB_USER || 'root',
-    password: process.env.DB_PASSWORD || '',
-    name: process.env.DB_NAME || 'opa_db',
+    host: cleanStr(process.env.DB_HOST, '127.0.0.1'),
+    port: parseInt(cleanStr(process.env.DB_PORT, '3306'), 10) || 3306,
+    user: cleanStr(process.env.DB_USER, 'root'),
+    // ⚠️ Le mot de passe peut contenir des espaces : on ne le trim PAS ici,
+    //    sauf espaces autour ajoutés par copier-coller → on trim quand même
+    //    car 99 % des échecs cPanel viennent d'un espace parasite.
+    password: process.env.DB_PASSWORD !== undefined ? String(process.env.DB_PASSWORD).trim() : '',
+    name: cleanStr(process.env.DB_NAME, 'opa_db'),
   },
 
   // ---------- Envoi des emails (demandes -> direction) ----------
@@ -20,15 +41,10 @@ export const CONFIG = {
     enabled: true,
 
     // Adresse qui RECEVRA les demandes (boîte de la direction).
-    // ⬇️ REMPLACEZ par la vraie adresse de la direction.
-    directionEmail: process.env.OPA_DIRECTION_EMAIL || 'direction.opa@exemple.com',
+    directionEmail: cleanStr(process.env.OPA_DIRECTION_EMAIL, 'direction.opa@exemple.com'),
 
     // Compte Gmail utilisé pour ENVOYER les emails.
-    // 1) Activez la "validation en 2 étapes" sur le compte Google.
-    // 2) Créez un "mot de passe d'application" (16 caractères) :
-    //    https://myaccount.google.com/apppasswords
-    // 3) Collez l'adresse Gmail et ce mot de passe ci-dessous.
-    gmailUser: process.env.SMTP_USER || 'votre.compte@gmail.com',
+    gmailUser: cleanStr(process.env.SMTP_USER, 'votre.compte@gmail.com'),
     gmailAppPassword: process.env.SMTP_PASS || 'xxxx xxxx xxxx xxxx',
   },
 
@@ -41,3 +57,14 @@ export const CONFIG = {
     keep: 30,       // nombre de sauvegardes à conserver
   },
 };
+
+// ── Affichage de contrôle au démarrage (SANS le mot de passe) ──
+// Permet de vérifier en 2 secondes quelle base l'app utilise VRAIMENT.
+export function logDbConfig() {
+  console.log('── Config MySQL effective ──────────────────────────');
+  console.log(`   host : ${CONFIG.db.host}`);
+  console.log(`   port : ${CONFIG.db.port}`);
+  console.log(`   user : ${CONFIG.db.user}`);
+  console.log(`   base : ${CONFIG.db.name}`);
+  console.log('────────────────────────────────────────────────────');
+}
