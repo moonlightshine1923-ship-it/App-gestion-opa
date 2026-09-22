@@ -99,6 +99,7 @@ router.post('/suppression-groupes', authenticate, authorize('admin', 'president'
   }
 });
 
+<<<<<<< HEAD
 // 4. Suppression d'un seul document par son id (complète API.deleteDocument).
 // ✅ Ajouté le 22/09/2026 : la route n'existait pas → l'appel tombait sur
 // la page d'accueil (200 + HTML) au lieu d'une réponse JSON.
@@ -120,4 +121,6 @@ router.delete('/:id', authenticate, authorize('admin', 'president'), async (req,
   }
 });
 
+=======
+>>>>>>> 0e2f66d53026f4fbb000dd7baf5779d721660afa
 export default router;

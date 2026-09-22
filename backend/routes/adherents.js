@@ -671,7 +671,11 @@ function renderCarteHTML(a, ad, info, photoDataUri) {
 
   .photo-wrap {
     position:absolute;
+<<<<<<< HEAD
     left:1.23%; top:32.50%;
+=======
+    left:1.23%; top:33.50%;
+>>>>>>> 0e2f66d53026f4fbb000dd7baf5779d721660afa
     width:25.86%; height:48.20%;
     z-index:3;
   }

@@ -1,3 +1,27 @@
+<<<<<<< HEAD
+=======
+// ============================================================
+//  CONFIGURATION OPA — ✅ VERSION CORRIGÉE (22/09/2026)
+// ============================================================
+//  ★ C'EST DANS CE FICHIER (+ le fichier .env) QUE VOUS
+//    RENSEIGNEZ LE NOM DE LA BASE ET L'UTILISATEUR MySQL. ★
+//
+//  ORDRE DE PRIORITÉ (du plus fort au plus faible) :
+//    1. Variables d'environnement déjà définies
+//       (ex : cPanel « Setup Node.js App » > Environment variables)
+//    2. Fichier .env à la RACINE du projet (à côté de package.json)
+//    3. Valeurs par défaut ci-dessous (XAMPP local)
+//
+//  CORRECTION APPORTÉE :
+//  - Ce fichier charge LUI-MÊME le .env AVANT de lire
+//    process.env. Avant, le .env était chargé dans server.js
+//    APRÈS les imports (hoisting ESM) → le .env était donc
+//    silencieusement IGNORÉ et l'app utilisait toujours
+//    root / opa_db, même sur cPanel. C'est la cause n°1 de
+//    « ça s'affiche mais rien ne s'écrit dans MA base ».
+// ============================================================
+
+>>>>>>> 0e2f66d53026f4fbb000dd7baf5779d721660afa
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';

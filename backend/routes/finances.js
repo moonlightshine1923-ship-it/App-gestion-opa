@@ -1,3 +1,19 @@
+<<<<<<< HEAD
+=======
+// ============================================================
+//  routes/finances.js — ✅ PATCH ANTI « FAUX SUCCÈS » (22/09/2026)
+//  - PATCH/DELETE : ensureFinanceSchema() + contrôle affectedRows
+//    → si rien n'est modifié/supprimé en base, l'API renvoie 404
+//    (plus de message « succès » alors que rien ne s'est passé)
+//  - POST : contrôle insertId + logs serveur
+//  - Le reste du fichier est INCHANGÉ
+//  ✅ 22/09/2026 (pack fallback) : + POST /mouvements/update et
+//     POST /mouvements/delete (secours si PATCH/DELETE bloqués par
+//     le pare-feu de l'hébergeur). Anciennes routes conservées.
+//  ✅ 22/09/2026 (pack montants) : + POST /comptes/update (secours),
+//     montants à 5 décimales + virgule FR acceptée (117226,34).
+// ============================================================
+>>>>>>> 0e2f66d53026f4fbb000dd7baf5779d721660afa
 import express from 'express';
 import { get, query, run } from '../db.js';
 import { authenticate, authorize } from '../middleware/auth.js';

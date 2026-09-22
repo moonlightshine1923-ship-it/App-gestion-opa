@@ -1,3 +1,20 @@
+<<<<<<< HEAD
+=======
+// ============================================================
+// check-db.js — Diagnostic MySQL OPA (à lancer EN LOCAL)
+// Usage :  node check-db.js
+// Placez ce fichier à la RACINE du projet (à côté de package.json).
+// ============================================================
+// Ce script :
+//  1. affiche la config MySQL EFFECTIVE (celle que l'app utilisera) ;
+//  2. teste la connexion au serveur MySQL ;
+//  3. vérifie que la base existe (la crée si droit suffisant) ;
+//  4. liste les tables finance_* et compte les lignes ;
+//  5. fait un TEST D'ÉCRITURE réel puis annulé (rollback) dans
+//     finance_mouvements → prouve que INSERT/UPDATE/DELETE sont OK.
+// ============================================================
+
+>>>>>>> 0e2f66d53026f4fbb000dd7baf5779d721660afa
 import mysql from 'mysql2/promise';
 import { CONFIG } from './backend/config.js';
 

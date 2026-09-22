@@ -1,3 +1,12 @@
+<<<<<<< HEAD
+=======
+// ============================================================
+//  db.js — ✅ VERSION CORRIGÉE (22/09/2026)
+//  - connect() compatible cPanel (CREATE DATABASE sans droit = warning, pas crash)
+//  - test de connexion immédiat + getDbInfo() pour le diagnostic
+//  - le reste du fichier (initSchema / migrations) est INCHANGÉ
+// ============================================================
+>>>>>>> 0e2f66d53026f4fbb000dd7baf5779d721660afa
 import mysql from 'mysql2/promise';
 import { CONFIG } from './config.js';
 

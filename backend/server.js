@@ -1,3 +1,22 @@
+<<<<<<< HEAD
+=======
+// ============================================================
+// server.js — ✅ VERSION CORRIGÉE (22/09/2026)
+// ============================================================
+// CORRECTIONS :
+// 1. Le .env est désormais chargé dans backend/config.js (AVANT les
+//    imports) → les variables DB_HOST/DB_USER/DB_NAME du .env sont
+//    VRAIMENT prises en compte (avant : silencieusement ignorées).
+// 2. app.listen() SEULEMENT si lancé directement (node backend/server.js).
+//    Sous Passenger/cPanel (require via app.cjs), on n'écoute PAS :
+//    c'est Passenger qui fournit le port. (Le commentaire précédent le
+//    promettait mais le code écoutait quand même → plantage cPanel.)
+// 3. /api/health enrichi : affiche host/user/base utilisées (sans mdp).
+// 4. Nouvelle route protégée /api/diag : liste les tables + compteurs
+//    finance_mouvements → prouve en 1 clic où l'app écrit VRAIMENT.
+// ============================================================
+
+>>>>>>> 0e2f66d53026f4fbb000dd7baf5779d721660afa
 import { fileURLToPath } from 'url';
 import path from 'path';
 
@@ -94,6 +113,7 @@ app.use((req, res, next) => {
   next();
 });
 
+<<<<<<< HEAD
 // ✅ 22/09/2026 (fix global pare-feu) : restaure la vraie méthode HTTP.
 // Le frontend envoie POST + en-tête « X-OPA-Method: PUT|PATCH|DELETE »
 // (voir api.js) car certains hébergeurs bloquent ces méthodes.
@@ -108,6 +128,8 @@ app.use((req, res, next) => {
   next();
 });
 
+=======
+>>>>>>> 0e2f66d53026f4fbb000dd7baf5779d721660afa
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 

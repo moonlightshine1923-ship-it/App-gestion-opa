@@ -10,6 +10,7 @@ const API = (() => {
     const headers = {};
     const token = getToken();
     if (token) headers['Authorization'] = 'Bearer ' + token;
+<<<<<<< HEAD
     // ✅ 22/09/2026 (fix global pare-feu) : certains hébergeurs interceptent
     // PUT/PATCH/DELETE et renvoient la page d'accueil (200 + HTML) au lieu
     // d'appeler l'API. On envoie donc POST + en-tête de surcharge, et
@@ -20,6 +21,8 @@ const API = (() => {
       wireMethod = 'POST';
       headers['X-OPA-Method'] = method;
     }
+=======
+>>>>>>> 0e2f66d53026f4fbb000dd7baf5779d721660afa
     let payload;
     if (isForm) {
       payload = body; // FormData
@@ -27,7 +30,11 @@ const API = (() => {
       headers['Content-Type'] = 'application/json';
       payload = JSON.stringify(body);
     }
+<<<<<<< HEAD
     const res = await fetch('/api' + url, { method: wireMethod, headers, body: payload });
+=======
+    const res = await fetch('/api' + url, { method, headers, body: payload });
+>>>>>>> 0e2f66d53026f4fbb000dd7baf5779d721660afa
     if (res.status === 401 && !url.includes('/auth/login')) {
       clearToken();
       window.location.reload();
